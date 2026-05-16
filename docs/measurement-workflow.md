@@ -27,6 +27,10 @@ python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass
 Named suites currently include `single`, `correctness`, `smoke`, `llm`,
 `llm-decode`, `llm-prefill`, `square`, and `ragged`.
 
+Nsight Compute may fail with `ERR_NVGPUCTRPERM` until NVIDIA GPU performance
+counter permissions are enabled on the host/driver. Benchmark timing still works
+without those counters; full stall and throughput analysis needs the permission.
+
 ## Record
 
 Capture enough context to make a result repeatable:
