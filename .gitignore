@@ -17,3 +17,5 @@ cmake-build-*/
 .vscode/
 .*.swp
 *.swp
+__pycache__/
+*.pyc
