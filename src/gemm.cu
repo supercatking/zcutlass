@@ -218,7 +218,13 @@ Status validate_desc(const GemmDesc& desc,
       desc.a_type != desc.d_type) {
     return Status::NotSupported;
   }
-  if (desc.a_type != DType::F16 && desc.a_type != DType::BF16) {
+  if (!is_supported_gemm_storage_dtype(desc.a_type)) {
+    return Status::NotSupported;
+  }
+  if (desc.a_layout != layout::LayoutKind::RowMajor ||
+      desc.b_layout != layout::LayoutKind::RowMajor ||
+      desc.c_layout != layout::LayoutKind::RowMajor ||
+      desc.d_layout != layout::LayoutKind::RowMajor) {
     return Status::NotSupported;
   }
   return Status::Success;
@@ -250,6 +256,132 @@ Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const voi
   return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
 }
 
+template <typename T, int BlockM, int BlockN, DType Type>
+class WmmaGemmOperation final : public gemm_api::GemmOperation {
+ public:
+  constexpr WmmaGemmOperation(const char* name) : description_{name,
+                                                              Type,
+                                                              Type,
+                                                              Type,
+                                                              Type,
+                                                              DType::F32,
+                                                              layout::LayoutKind::RowMajor,
+                                                              layout::LayoutKind::RowMajor,
+                                                              layout::LayoutKind::RowMajor,
+                                                              layout::LayoutKind::RowMajor,
+                                                              arch::ArchKind::Sm80,
+                                                              arch::OpClass::TensorOp,
+                                                              BlockM,
+                                                              BlockN,
+                                                              kWmmaK} {}
+
+  const gemm_api::GemmOperationDescription& description() const override {
+    return description_;
+  }
+
+  bool can_implement(const gemm_api::GemmArguments& args,
+                     const gemm_api::GemmPreference& pref) const override {
+    (void)pref;
+    if (args.A.dtype != Type || args.B.dtype != Type || args.C.dtype != Type ||
+        args.D.dtype != Type) {
+      return false;
+    }
+    if (args.A.layout != layout::LayoutKind::RowMajor ||
+        args.B.layout != layout::LayoutKind::RowMajor ||
+        args.C.layout != layout::LayoutKind::RowMajor ||
+        args.D.layout != layout::LayoutKind::RowMajor) {
+      return false;
+    }
+    if (BlockN == 128 && args.problem.n < 128) {
+      return false;
+    }
+    return arch::supports(arch::current_device_cc(), description_.min_arch);
+  }
+
+  Status run(const gemm_api::GemmArguments& args,
+             const gemm_api::GemmPreference& pref) const override {
+    (void)pref;
+    GemmDesc desc{args.problem.m,
+                  args.problem.n,
+                  args.problem.k,
+                  args.A.ld,
+                  args.B.ld,
+                  args.C.ld,
+                  args.D.ld,
+                  args.A.dtype,
+                  args.B.dtype,
+                  args.C.dtype,
+                  args.D.dtype,
+                  args.alpha,
+                  args.beta,
+                  args.bias,
+                  args.stream,
+                  args.A.layout,
+                  args.B.layout,
+                  args.C.layout,
+                  args.D.layout};
+    return launch_wmma<T, BlockM, BlockN>(desc, args.A.data, args.B.data, args.C.data,
+                                          args.D.data);
+  }
+
+ private:
+  gemm_api::GemmOperationDescription description_;
+};
+
+gemm_api::GemmArguments make_arguments(const GemmDesc& desc,
+                                       const void* A,
+                                       const void* B,
+                                       const void* C,
+                                       void* D) {
+  gemm_api::GemmArguments args{};
+  args.problem = {desc.m, desc.n, desc.k};
+  args.A = {A, desc.a_type, desc.a_layout, desc.lda};
+  args.B = {B, desc.b_type, desc.b_layout, desc.ldb};
+  args.C = {C, desc.c_type, desc.c_layout, desc.ldc};
+  args.D = {D, desc.d_type, desc.d_layout, desc.ldd};
+  args.alpha = desc.alpha;
+  args.beta = desc.beta;
+  args.bias = desc.bias;
+  args.stream = desc.stream;
+  return args;
+}
+
+void ensure_builtin_operations_registered() {
+  static bool initialized = false;
+  if (initialized) {
+    return;
+  }
+
+  static const WmmaGemmOperation<half, 64, 128, DType::F16> f16_64x128(
+      "zcutlass_sm120_tensorop_f16_64x128x16");
+  static const WmmaGemmOperation<half, 64, 64, DType::F16> f16_64x64(
+      "zcutlass_sm120_tensorop_f16_64x64x16");
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16> bf16_64x128(
+      "zcutlass_sm120_tensorop_bf16_64x128x16");
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 64, DType::BF16> bf16_64x64(
+      "zcutlass_sm120_tensorop_bf16_64x64x16");
+
+  auto& manifest = gemm_api::global_manifest();
+  manifest.append(&f16_64x128);
+  manifest.append(&f16_64x64);
+  manifest.append(&bf16_64x128);
+  manifest.append(&bf16_64x64);
+  initialized = true;
+}
+
+const char* select_builtin_kernel_name(const GemmDesc& desc) {
+  ensure_builtin_operations_registered();
+  const gemm_api::GemmArguments args = make_arguments(
+      desc, reinterpret_cast<const void*>(1), reinterpret_cast<const void*>(1),
+      desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
+      reinterpret_cast<void*>(1));
+  const auto* operation = gemm_api::global_manifest().find_best(args, {});
+  if (operation != nullptr) {
+    return operation->description().name;
+  }
+  return "none";
+}
+
 template <typename T>
 Status dispatch_typed(const GemmDesc& desc, const void* A, const void* B, const void* C, void* D) {
   if (desc.n >= 128) {
@@ -273,36 +405,72 @@ Status gemm(const GemmDesc& desc,
     return Status::Success;
   }
 
-  cudaDeviceProp prop{};
-  int device = 0;
-  if (cudaGetDevice(&device) != cudaSuccess || cudaGetDeviceProperties(&prop, device) != cudaSuccess) {
-    return Status::RuntimeError;
-  }
-  if (prop.major < 8) {
+  ensure_builtin_operations_registered();
+  const gemm_api::GemmArguments args = make_arguments(desc, A, B, C, D);
+  const gemm_api::GemmOperation* operation = gemm_api::global_manifest().find_best(args, {});
+  if (operation == nullptr) {
     return Status::NotSupported;
   }
-
-  if (desc.a_type == DType::F16) {
-    return dispatch_typed<half>(desc, A, B, C, D);
-  }
-  if (desc.a_type == DType::BF16) {
-    return dispatch_typed<__nv_bfloat16>(desc, A, B, C, D);
-  }
-  return Status::NotSupported;
+  return operation->run(args, {});
 }
 
-const char* status_to_string(Status status) {
-  switch (status) {
-    case Status::Success:
-      return "Success";
-    case Status::InvalidArgument:
-      return "InvalidArgument";
-    case Status::NotSupported:
-      return "NotSupported";
-    case Status::RuntimeError:
-      return "RuntimeError";
-  }
-  return "Unknown";
+const char* selected_kernel_name(const GemmDesc& desc) {
+  const Status validation = validate_desc(desc, reinterpret_cast<const void*>(1),
+                                          reinterpret_cast<const void*>(1),
+                                          desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
+                                          reinterpret_cast<const void*>(1));
+  return validation == Status::Success ? select_builtin_kernel_name(desc) : "none";
+}
+
+Status gemm(const gemm_api::GemmArguments& args) {
+  GemmDesc desc{args.problem.m,
+                args.problem.n,
+                args.problem.k,
+                args.A.ld,
+                args.B.ld,
+                args.C.ld,
+                args.D.ld,
+                args.A.dtype,
+                args.B.dtype,
+                args.C.dtype,
+                args.D.dtype,
+                args.alpha,
+                args.beta,
+                args.bias,
+                args.stream,
+                args.A.layout,
+                args.B.layout,
+                args.C.layout,
+                args.D.layout};
+  return gemm(desc, args.A.data, args.B.data, args.C.data, args.D.data);
+}
+
+Status can_implement(const gemm_api::GemmArguments& args) {
+  GemmDesc desc{args.problem.m,
+                args.problem.n,
+                args.problem.k,
+                args.A.ld,
+                args.B.ld,
+                args.C.ld,
+                args.D.ld,
+                args.A.dtype,
+                args.B.dtype,
+                args.C.dtype,
+                args.D.dtype,
+                args.alpha,
+                args.beta,
+                args.bias,
+                args.stream,
+                args.A.layout,
+                args.B.layout,
+                args.C.layout,
+                args.D.layout};
+  return validate_desc(desc, args.A.data, args.B.data, args.C.data, args.D.data);
+}
+
+size_t get_workspace_size(const gemm_api::GemmArguments& args) {
+  (void)args;
+  return 0;
 }
 
 int version_major() {

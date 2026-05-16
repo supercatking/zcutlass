@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -44,9 +45,14 @@ struct Options {
   int64_t k = 4096;
   std::string dtype = "f16";
   std::string suite = "single";
+  std::string providers = "zcutlass,cublas";
+  std::string output;
   int warmup = 10;
   int iterations = 50;
+  float alpha = 1.0f;
+  float beta = 0.0f;
   bool json = false;
+  bool append = false;
 };
 
 struct Shape {
@@ -115,16 +121,27 @@ Options parse_options(int argc, char** argv) {
       options.dtype = require_value("--dtype");
     } else if (arg == "--suite") {
       options.suite = require_value("--suite");
+    } else if (arg == "--providers") {
+      options.providers = require_value("--providers");
+    } else if (arg == "--output") {
+      options.output = require_value("--output");
+    } else if (arg == "--append") {
+      options.append = true;
     } else if (arg == "--warmup") {
       options.warmup = std::atoi(require_value("--warmup"));
     } else if (arg == "--iterations") {
       options.iterations = std::atoi(require_value("--iterations"));
+    } else if (arg == "--alpha") {
+      options.alpha = std::atof(require_value("--alpha"));
+    } else if (arg == "--beta") {
+      options.beta = std::atof(require_value("--beta"));
     } else if (arg == "--json") {
       options.json = true;
     } else if (arg == "--help") {
       std::cout << "Usage: zcutlass_bench [--m M --n N --k K] [--dtype f16|bf16]\n"
-                << "                      [--suite single|smoke|llm] [--json]\n"
-                << "                      [--warmup N] [--iterations N]\n";
+                << "                      [--suite single|correctness|smoke|llm|llm-decode|llm-prefill|square|ragged]\n"
+                << "                      [--providers zcutlass,cublas] [--json] [--output FILE]\n"
+                << "                      [--warmup N] [--iterations N] [--alpha X] [--beta X]\n";
       std::exit(0);
     } else {
       std::cerr << "Unknown argument: " << arg << std::endl;
@@ -141,12 +158,34 @@ std::vector<Shape> make_shapes(const Options& options) {
   if (options.suite == "smoke") {
     return {{1, 1024, 1024}, {8, 2048, 2048}, {64, 4096, 4096}, {256, 2048, 8192}};
   }
-  if (options.suite == "llm") {
+  if (options.suite == "correctness") {
+    return {{15, 17, 19}, {16, 16, 16}, {65, 129, 31}, {67, 127, 29}};
+  }
+  if (options.suite == "square") {
+    return {{512, 512, 512}, {1024, 1024, 1024}, {2048, 2048, 2048}, {4096, 4096, 4096}};
+  }
+  if (options.suite == "ragged") {
+    return {{63, 127, 65}, {65, 129, 127}, {127, 255, 129}, {257, 511, 255}};
+  }
+  if (options.suite == "llm" || options.suite == "llm-decode" ||
+      options.suite == "llm-prefill") {
     std::vector<Shape> shapes;
     const int64_t hs[] = {1024, 2048, 4096, 8192};
-    const int64_t ms[] = {1, 8, 16, 64, 256, 1024};
+    const int64_t decode_ms[] = {1, 2, 4, 8, 16};
+    const int64_t prefill_ms[] = {64, 128, 256, 512, 1024};
+    const int64_t all_ms[] = {1, 8, 16, 64, 256, 1024};
     for (int64_t h : hs) {
-      for (int64_t m : ms) {
+      const int64_t* ms = all_ms;
+      int count = 6;
+      if (options.suite == "llm-decode") {
+        ms = decode_ms;
+        count = 5;
+      } else if (options.suite == "llm-prefill") {
+        ms = prefill_ms;
+        count = 5;
+      }
+      for (int i = 0; i < count; ++i) {
+        const int64_t m = ms[i];
         shapes.push_back({m, h, h});
         shapes.push_back({m, 4 * h, h});
         shapes.push_back({m, h, 4 * h});
@@ -159,6 +198,10 @@ std::vector<Shape> make_shapes(const Options& options) {
   }
   std::cerr << "Unknown suite: " << options.suite << std::endl;
   std::exit(2);
+}
+
+bool provider_enabled(const Options& options, const std::string& provider) {
+  return options.providers == "all" || options.providers.find(provider) != std::string::npos;
 }
 
 template <typename T>
@@ -209,8 +252,39 @@ double tflops(const Shape& shape, float ms) {
   return flops / (static_cast<double>(ms) * 1.0e-3) / 1.0e12;
 }
 
+void emit_schema_record(std::ostream& out,
+                        const Options& options,
+                        const Shape& shape,
+                        const char* provider,
+                        const char* kernel,
+                        float ms,
+                        double achieved_tflops,
+                        const cudaDeviceProp& prop) {
+  out << std::fixed << std::setprecision(4)
+      << "{\"schema_version\":1"
+      << ",\"problem\":{\"operation\":\"gemm\",\"m\":" << shape.m << ",\"n\":"
+      << shape.n << ",\"k\":" << shape.k << ",\"dtype\":\"" << options.dtype
+      << "\",\"layout\":\"row,row,row,row\",\"alpha\":" << options.alpha
+      << ",\"beta\":" << options.beta << "}"
+      << ",\"provider\":\"" << provider << "\",\"status\":\"success\""
+      << ",\"kernel\":\"" << kernel << "\""
+      << ",\"performance\":{\"warmup_iterations\":" << options.warmup
+      << ",\"profiling_iterations\":" << options.iterations << ",\"median_ms\":"
+      << ms << ",\"tflops\":" << achieved_tflops << "}"
+      << ",\"environment\":{\"gpu_name\":\"" << prop.name << "\",\"sm\":"
+      << prop.major << prop.minor << ",\"zcutlass_version\":\""
+      << zcutlass::version_major() << "." << zcutlass::version_minor() << "."
+      << zcutlass::version_patch() << "\"}"
+      << ",\"tags\":{\"suite\":\"" << options.suite << "\"}}"
+      << std::endl;
+}
+
 template <typename T>
-void run_shape(const Shape& shape, const Options& options, cublasHandle_t handle) {
+void run_shape(const Shape& shape,
+               const Options& options,
+               cublasHandle_t handle,
+               const cudaDeviceProp& prop,
+               std::ostream* output) {
   const int64_t lda = shape.k;
   const int64_t ldb = shape.n;
   const int64_t ldc = shape.n;
@@ -249,21 +323,22 @@ void run_shape(const Shape& shape, const Options& options, cublasHandle_t handle
                           z_dtype<T>(),
                           z_dtype<T>(),
                           z_dtype<T>(),
-                          1.0f,
-                          0.0f,
+                          options.alpha,
+                          options.beta,
                           nullptr,
                           nullptr};
 
   const auto z_fn = [&]() {
-    const zcutlass::Status status = zcutlass::gemm(desc, d_a, d_b, nullptr, d_z);
+    const zcutlass::Status status =
+        zcutlass::gemm(desc, d_a, d_b, options.beta != 0.0f ? d_c : nullptr, d_z);
     if (status != zcutlass::Status::Success) {
       std::cerr << "zcutlass::gemm failed: " << zcutlass::status_to_string(status) << std::endl;
       std::exit(1);
     }
   };
 
-  const float alpha = 1.0f;
-  const float beta = 0.0f;
+  const float alpha = options.alpha;
+  const float beta = options.beta;
   const auto blas_fn = [&]() {
     CHECK_CUBLAS(cublasGemmEx(handle,
                               CUBLAS_OP_N,
@@ -286,22 +361,40 @@ void run_shape(const Shape& shape, const Options& options, cublasHandle_t handle
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   };
 
-  const float z_ms = time_ms(z_fn, options.warmup, options.iterations);
-  const float blas_ms = time_ms(blas_fn, options.warmup, options.iterations);
-  const double z_tflops = tflops(shape, z_ms);
-  const double blas_tflops = tflops(shape, blas_ms);
-  const double speedup = blas_ms / z_ms;
+  float z_ms = 0.0f;
+  float blas_ms = 0.0f;
+  double z_tflops = 0.0;
+  double blas_tflops = 0.0;
+  if (provider_enabled(options, "zcutlass")) {
+    z_ms = time_ms(z_fn, options.warmup, options.iterations);
+    z_tflops = tflops(shape, z_ms);
+    if (output != nullptr) {
+      emit_schema_record(*output, options, shape, "zcutlass", zcutlass::selected_kernel_name(desc),
+                         z_ms, z_tflops, prop);
+    }
+  }
+  if (provider_enabled(options, "cublas")) {
+    blas_ms = time_ms(blas_fn, options.warmup, options.iterations);
+    blas_tflops = tflops(shape, blas_ms);
+    if (output != nullptr) {
+      emit_schema_record(*output, options, shape, "cublas", "cublasGemmEx", blas_ms,
+                         blas_tflops, prop);
+    }
+  }
+  const double speedup = (z_ms > 0.0f && blas_ms > 0.0f) ? blas_ms / z_ms : 0.0;
 
   if (options.json) {
     std::cout << std::fixed << std::setprecision(4)
               << "{\"m\":" << shape.m << ",\"n\":" << shape.n << ",\"k\":" << shape.k
               << ",\"dtype\":\"" << options.dtype << "\",\"zcutlass_ms\":" << z_ms
-              << ",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
+              << ",\"kernel\":\"" << zcutlass::selected_kernel_name(desc)
+              << "\",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
               << ",\"cublas_tflops\":" << blas_tflops << ",\"speedup\":" << speedup << "}"
               << std::endl;
   } else {
     std::cout << std::fixed << std::setprecision(4) << "m=" << shape.m << " n=" << shape.n
-              << " k=" << shape.k << " dtype=" << options.dtype << " zcutlass=" << z_ms
+              << " k=" << shape.k << " dtype=" << options.dtype << " kernel="
+              << zcutlass::selected_kernel_name(desc) << " zcutlass=" << z_ms
               << " ms (" << z_tflops << " TFLOP/s) cublas=" << blas_ms << " ms ("
               << blas_tflops << " TFLOP/s) speedup=" << speedup << "x" << std::endl;
   }
@@ -334,12 +427,30 @@ int main(int argc, char** argv) {
   CHECK_CUBLAS(cublasCreate(&handle));
   CHECK_CUBLAS(cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH));
 
+  std::ofstream output_file;
+  std::ostream* output = nullptr;
+  if (!options.output.empty()) {
+    output_file.open(options.output, options.append ? std::ios::app : std::ios::out);
+    if (!output_file) {
+      std::cerr << "Failed to open output file: " << options.output << std::endl;
+      return 2;
+    }
+    output = &output_file;
+  }
+
   const std::vector<Shape> shapes = make_shapes(options);
   for (const Shape& shape : shapes) {
     if (options.dtype == "f16") {
-      run_shape<half>(shape, options, handle);
+      run_shape<half>(shape, options, handle, prop, output);
     } else if (options.dtype == "bf16") {
-      run_shape<__nv_bfloat16>(shape, options, handle);
+      run_shape<__nv_bfloat16>(shape, options, handle, prop, output);
+    } else if (options.dtype == "both") {
+      Options f16_options = options;
+      f16_options.dtype = "f16";
+      run_shape<half>(shape, f16_options, handle, prop, output);
+      Options bf16_options = options;
+      bf16_options.dtype = "bf16";
+      run_shape<__nv_bfloat16>(shape, bf16_options, handle, prop, output);
     } else {
       std::cerr << "Unsupported dtype: " << options.dtype << std::endl;
       return 2;
@@ -349,4 +460,3 @@ int main(int argc, char** argv) {
   CHECK_CUBLAS(cublasDestroy(handle));
   return 0;
 }
-

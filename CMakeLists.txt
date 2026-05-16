@@ -19,6 +19,7 @@ set(CMAKE_CUDA_EXTENSIONS OFF)
 find_package(CUDAToolkit REQUIRED)
 
 add_library(zcutlass STATIC
+  src/foundation.cu
   src/gemm.cu
 )
 

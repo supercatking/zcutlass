@@ -191,6 +191,12 @@ void run_case(const std::string& name,
       m, n, k, lda, ldb, ldc, ldd, dtype<T>(), dtype<T>(), dtype<T>(), dtype<T>(),
       alpha, beta, use_bias ? static_cast<const void*>(d_bias) : nullptr, nullptr};
 
+  const char* kernel_name = zcutlass::selected_kernel_name(desc);
+  if (kernel_name == nullptr || std::string(kernel_name) == "none") {
+    std::cerr << "Expected a selected kernel for " << name << std::endl;
+    std::exit(1);
+  }
+
   const zcutlass::Status status = zcutlass::gemm(desc, d_a, d_b, beta != 0.0f ? d_c : nullptr, d_d);
   if (status != zcutlass::Status::Success) {
     std::cerr << "zcutlass::gemm failed in " << name << ": "
@@ -307,6 +313,30 @@ void run_invalid_argument_tests() {
   desc.b_type = zcutlass::DType::BF16;
   if (zcutlass::gemm(desc, ptr, ptr, nullptr, ptr) != zcutlass::Status::NotSupported) {
     std::cerr << "Expected mixed dtypes to be NotSupported" << std::endl;
+    std::exit(1);
+  }
+
+  desc.b_type = zcutlass::DType::F16;
+  desc.a_layout = zcutlass::layout::LayoutKind::ColumnMajor;
+  if (zcutlass::gemm(desc, ptr, ptr, nullptr, ptr) != zcutlass::Status::NotSupported) {
+    std::cerr << "Expected column-major layout to be NotSupported for v1" << std::endl;
+    std::exit(1);
+  }
+
+  zcutlass::gemm_api::GemmArguments args{};
+  args.problem = {16, 16, 16};
+  args.A = {ptr, zcutlass::DType::F16, zcutlass::layout::LayoutKind::RowMajor, 16};
+  args.B = {ptr, zcutlass::DType::F16, zcutlass::layout::LayoutKind::RowMajor, 16};
+  args.C = {nullptr, zcutlass::DType::F16, zcutlass::layout::LayoutKind::RowMajor, 16};
+  args.D = {ptr, zcutlass::DType::F16, zcutlass::layout::LayoutKind::RowMajor, 16};
+  args.alpha = 1.0f;
+  args.beta = 0.0f;
+  if (zcutlass::can_implement(args) != zcutlass::Status::Success) {
+    std::cerr << "Expected GemmArguments row-major f16 path to be implementable" << std::endl;
+    std::exit(1);
+  }
+  if (zcutlass::get_workspace_size(args) != 0) {
+    std::cerr << "Expected v1 GEMM workspace size to be zero" << std::endl;
     std::exit(1);
   }
 

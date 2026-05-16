@@ -7,6 +7,12 @@ FP16/BF16 GEMM with FP32 accumulation and an optional N-broadcast bias.
 The project studies public CUTLASS design ideas and uses CUTLASS/cuBLAS only as
 external baselines. CUTLASS source is not vendored into this repository.
 
+## Docs
+
+- [CUTLASS alignment roadmap](docs/cutlass-alignment-roadmap.md)
+- [Measurement workflow](docs/measurement-workflow.md)
+- [Development workflow](docs/development-workflow.md)
+
 ## Build
 
 ```bash
@@ -27,6 +33,7 @@ compute-sanitizer ./build/zcutlass_tests
 ```bash
 ./build/zcutlass_bench --suite smoke --dtype f16
 ./build/zcutlass_bench --m 256 --n 4096 --k 4096 --dtype bf16 --json
+./build/zcutlass_bench --suite correctness --dtype both --providers zcutlass,cublas --output build/measurement.jsonl
 python3 tools/tune_gemm.py --suite smoke --dtype both --output build/tuning_results.json
 python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16
 python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass-dir /path/to/cutlass
@@ -38,6 +45,12 @@ median latency plus TFLOP/s. The `llm` suite covers common hidden sizes
 start with `smoke` while iterating. CUTLASS comparison is intentionally routed
 through an external `cutlass_profiler`; no CUTLASS source is copied into this
 repository.
+
+## Roadmap Docs
+
+- [CUTLASS alignment roadmap](docs/cutlass-alignment-roadmap.md)
+- [Measurement workflow](docs/measurement-workflow.md)
+- [Development workflow](docs/development-workflow.md)
 
 ## Public API
 
