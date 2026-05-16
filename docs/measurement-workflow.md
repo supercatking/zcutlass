@@ -13,6 +13,7 @@ ctest --test-dir build --output-on-failure
 ./build/zcutlass_bench --suite smoke --dtype both --json
 ./build/zcutlass_bench --suite correctness --dtype both --providers zcutlass,cublas --output build/measurement.jsonl
 python3 tools/summarize_measurements.py build/measurement.jsonl
+python3 tools/visualize_gemm_comparison.py --suite smoke --dtype f16 --cutlass-jsonl build/cutlass_baseline.jsonl --output build/gemm_comparison.html
 ```
 
 ## Compare
@@ -30,6 +31,21 @@ Named suites currently include `single`, `correctness`, `smoke`, `llm`,
 Nsight Compute may fail with `ERR_NVGPUCTRPERM` until NVIDIA GPU performance
 counter permissions are enabled on the host/driver. Benchmark timing still works
 without those counters; full stall and throughput analysis needs the permission.
+
+## Visual Report
+
+Use `tools/visualize_gemm_comparison.py` to generate a self-contained HTML
+report with latency, TFLOP/s, and speedup charts. The CUTLASS baseline can come
+from schema-v1 JSONL, a CUTLASS profiler CSV, or an external `cutlass_profiler`
+binary:
+
+```bash
+python3 tools/visualize_gemm_comparison.py \
+  --suite smoke \
+  --dtype f16 \
+  --cutlass-jsonl build/cutlass_baseline.jsonl \
+  --output build/gemm_comparison.html
+```
 
 ## Record
 
