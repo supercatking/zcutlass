@@ -11,15 +11,19 @@ The built-in manifest currently registers four row-major operations:
 - `zcutlass_sm120_tensorop_f16_64x64x16`
 - `zcutlass_sm120_tensorop_bf16_64x128x16`
 - `zcutlass_sm120_tensorop_bf16_64x64x16`
+- `zcutlass_sm120_tensorop_f16_64x128x16_aligned`
+- `zcutlass_sm120_tensorop_bf16_64x128x16_aligned`
 
 The benchmark JSONL includes the selected kernel name and the registered
 operation count so measurements can be traced back to a concrete implementation.
 
 ## Known Gap
 
-The baseline uses synchronous WMMA, scalar global-to-shared copies, and a generic
-epilogue. It is expected to trail cuBLAS on large aligned GEMMs until the
-mainloop and epilogue are specialized.
+The baseline uses synchronous WMMA, scalar global-to-shared copies, and mostly a
+generic epilogue. The aligned operation variants currently provide a separate
+dispatch point for dense `alpha=1,beta=0,bias=null` problems; their implementation
+still shares the WMMA kernel body, so they are a staging point for future fast
+path work rather than a peak kernel.
 
 ## Next Optimization Order
 
@@ -44,4 +48,3 @@ ncu --target-processes all \
   --section SourceCounters \
   ./build/zcutlass_bench --m 256 --n 4096 --k 4096 --dtype f16 --warmup 3 --iterations 5
 ```
-

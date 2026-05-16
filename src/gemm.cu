@@ -256,7 +256,7 @@ Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const voi
   return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
 }
 
-template <typename T, int BlockM, int BlockN, DType Type>
+template <typename T, int BlockM, int BlockN, DType Type, bool AlignedNoBetaBias>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
   constexpr WmmaGemmOperation(const char* name) : description_{name,
@@ -274,9 +274,9 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                                                               BlockM,
                                                               BlockN,
                                                               kWmmaK,
-                                                              false,
-                                                              true,
-                                                              true} {}
+                                                              AlignedNoBetaBias,
+                                                              !AlignedNoBetaBias,
+                                                              !AlignedNoBetaBias} {}
 
   const gemm_api::GemmOperationDescription& description() const override {
     return description_;
@@ -297,6 +297,19 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
     }
     if (BlockN == 128 && args.problem.n < 128) {
       return false;
+    }
+    if (AlignedNoBetaBias) {
+      if (args.problem.m % BlockM != 0 || args.problem.n % BlockN != 0 ||
+          args.problem.k % kWmmaK != 0) {
+        return false;
+      }
+      if (args.alpha != 1.0f || args.beta != 0.0f || args.bias != nullptr) {
+        return false;
+      }
+      if (args.A.ld != args.problem.k || args.B.ld != args.problem.n ||
+          args.D.ld != args.problem.n) {
+        return false;
+      }
     }
     return arch::supports(arch::current_device_cc(), description_.min_arch);
   }
@@ -355,16 +368,22 @@ void ensure_builtin_operations_registered() {
     return;
   }
 
-  static const WmmaGemmOperation<half, 64, 128, DType::F16> f16_64x128(
+  static const WmmaGemmOperation<half, 64, 128, DType::F16, true> f16_64x128_aligned(
+      "zcutlass_sm120_tensorop_f16_64x128x16_aligned");
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
+      bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned");
+  static const WmmaGemmOperation<half, 64, 128, DType::F16, false> f16_64x128(
       "zcutlass_sm120_tensorop_f16_64x128x16");
-  static const WmmaGemmOperation<half, 64, 64, DType::F16> f16_64x64(
+  static const WmmaGemmOperation<half, 64, 64, DType::F16, false> f16_64x64(
       "zcutlass_sm120_tensorop_f16_64x64x16");
-  static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16> bf16_64x128(
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, false> bf16_64x128(
       "zcutlass_sm120_tensorop_bf16_64x128x16");
-  static const WmmaGemmOperation<__nv_bfloat16, 64, 64, DType::BF16> bf16_64x64(
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 64, DType::BF16, false> bf16_64x64(
       "zcutlass_sm120_tensorop_bf16_64x64x16");
 
   auto& manifest = gemm_api::global_manifest();
+  manifest.append(&f16_64x128_aligned);
+  manifest.append(&bf16_64x128_aligned);
   manifest.append(&f16_64x128);
   manifest.append(&f16_64x64);
   manifest.append(&bf16_64x128);
