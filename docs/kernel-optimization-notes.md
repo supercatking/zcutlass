@@ -13,9 +13,16 @@ The built-in manifest currently registers four row-major operations:
 - `zcutlass_sm120_tensorop_bf16_64x64x16`
 - `zcutlass_sm120_tensorop_f16_64x128x16_aligned`
 - `zcutlass_sm120_tensorop_bf16_64x128x16_aligned`
+- `zcutlass_sm120_tensorop_f16_32x128x16`
+- `zcutlass_sm120_tensorop_f16_32x64x16`
+- `zcutlass_sm120_tensorop_bf16_32x128x16`
+- `zcutlass_sm120_tensorop_bf16_32x64x16`
 
 The benchmark JSONL includes the selected kernel name and the registered
 operation count so measurements can be traced back to a concrete implementation.
+The `32x*` entries are registered after the `64x*` fallback kernels because
+initial spot checks showed the reused WMMA body is slower for decode shapes; they
+are placeholders for a future dedicated small-M mainloop, not the default path.
 
 ## Known Gap
 
@@ -27,13 +34,11 @@ path work rather than a peak kernel.
 
 ## Next Optimization Order
 
-1. Add small-M kernels for LLM decode shapes (`M <= 16`) to avoid wasting the
-   `64x*` tile.
-2. Add aligned no-bias fast paths for dense multiples of tile sizes.
-3. Double-buffer the K loop to reduce barrier and memory dependency stalls.
-4. Replace WMMA with explicit MMA/register epilogue once the profiler makes the
+1. Add aligned no-bias fast paths for dense multiples of tile sizes.
+2. Double-buffer the K loop to reduce barrier and memory dependency stalls.
+3. Replace WMMA with explicit MMA/register epilogue once the profiler makes the
    current bottleneck clear.
-5. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
+4. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
    baseline has a stable measurement story.
 
 ## Profiling Command

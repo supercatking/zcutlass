@@ -343,6 +343,37 @@ void run_invalid_argument_tests() {
   std::cout << "[pass] invalid argument checks" << std::endl;
 }
 
+void run_dispatch_tests() {
+  zcutlass::GemmDesc desc{};
+  desc.m = 8;
+  desc.n = 256;
+  desc.k = 256;
+  desc.lda = 256;
+  desc.ldb = 256;
+  desc.ldc = 256;
+  desc.ldd = 256;
+  desc.a_type = zcutlass::DType::F16;
+  desc.b_type = zcutlass::DType::F16;
+  desc.c_type = zcutlass::DType::F16;
+  desc.d_type = zcutlass::DType::F16;
+  desc.alpha = 1.0f;
+  desc.beta = 0.0f;
+  if (std::string(zcutlass::selected_kernel_name(desc)).find("64x128x16") == std::string::npos) {
+    std::cerr << "Expected small-M f16 dispatch to stay on default 64x128 fallback, got "
+              << zcutlass::selected_kernel_name(desc) << std::endl;
+    std::exit(1);
+  }
+
+  desc.m = 64;
+  if (std::string(zcutlass::selected_kernel_name(desc)).find("64x128x16") == std::string::npos) {
+    std::cerr << "Expected M=64 dispatch to select 64x128 kernel, got "
+              << zcutlass::selected_kernel_name(desc) << std::endl;
+    std::exit(1);
+  }
+
+  std::cout << "[pass] dispatch checks" << std::endl;
+}
+
 }  // namespace
 
 int main() {
@@ -358,6 +389,7 @@ int main() {
   CHECK_CUBLAS(cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH));
 
   run_invalid_argument_tests();
+  run_dispatch_tests();
 
   run_case<half>("f16 tiny padded bias", handle, 15, 17, 19, 1.0f, 0.25f, true, true);
   run_case<half>("f16 16x16", handle, 16, 16, 16, 1.0f, 0.0f, false, false);

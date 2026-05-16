@@ -298,6 +298,9 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
     if (BlockN == 128 && args.problem.n < 128) {
       return false;
     }
+    if (BlockM == 32 && args.problem.m > 32) {
+      return false;
+    }
     if (AlignedNoBetaBias) {
       if (args.problem.m % BlockM != 0 || args.problem.n % BlockN != 0 ||
           args.problem.k % kWmmaK != 0) {
@@ -372,6 +375,14 @@ void ensure_builtin_operations_registered() {
       "zcutlass_sm120_tensorop_f16_64x128x16_aligned");
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
       bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned");
+  static const WmmaGemmOperation<half, 32, 128, DType::F16, false> f16_32x128(
+      "zcutlass_sm120_tensorop_f16_32x128x16");
+  static const WmmaGemmOperation<half, 32, 64, DType::F16, false> f16_32x64(
+      "zcutlass_sm120_tensorop_f16_32x64x16");
+  static const WmmaGemmOperation<__nv_bfloat16, 32, 128, DType::BF16, false> bf16_32x128(
+      "zcutlass_sm120_tensorop_bf16_32x128x16");
+  static const WmmaGemmOperation<__nv_bfloat16, 32, 64, DType::BF16, false> bf16_32x64(
+      "zcutlass_sm120_tensorop_bf16_32x64x16");
   static const WmmaGemmOperation<half, 64, 128, DType::F16, false> f16_64x128(
       "zcutlass_sm120_tensorop_f16_64x128x16");
   static const WmmaGemmOperation<half, 64, 64, DType::F16, false> f16_64x64(
@@ -388,6 +399,10 @@ void ensure_builtin_operations_registered() {
   manifest.append(&f16_64x64);
   manifest.append(&bf16_64x128);
   manifest.append(&bf16_64x64);
+  manifest.append(&f16_32x128);
+  manifest.append(&f16_32x64);
+  manifest.append(&bf16_32x128);
+  manifest.append(&bf16_32x64);
   initialized = true;
 }
 
