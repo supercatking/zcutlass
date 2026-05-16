@@ -40,6 +40,12 @@ shapes.
 3. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
    baseline has a stable measurement story.
 
+See [LLM Kernel Family Plan](llm-kernel-family-plan.md) for the first
+profile-driven experiments by Decode, Prefill, Large/Throughput, and Fallback
+families. The plan intentionally avoids full-shape-specific kernels; experiments
+should improve tile families, mainloop behavior, and epilogue policy so the
+manifest remains small and explainable.
+
 ## Profiling Command
 
 ```bash

@@ -3,6 +3,16 @@
 zcutlass development uses parallel agents for CPU-heavy implementation and
 analysis, but serializes GPU measurements on the single RTX 5080.
 
+## v1.5 Goal Lock
+
+v1.5 optimizes LLM GEMM on RTX 5080/SM120. Arbitrary row-major FP16/BF16 GEMM
+remains supported for correctness and fallback dispatch, but it is not the v1.5
+optimized target.
+
+Agents must not expand performance work by adding many full-shape-specific
+kernels. Use CUTLASS-style tile families and shape-bucket dispatch so optimized
+coverage stays measurable, reusable, and reviewable.
+
 ## Roles
 
 - Coordinator owns integration, validation order, commits, GitHub pushes, and
@@ -23,6 +33,8 @@ analysis, but serializes GPU measurements on the single RTX 5080.
   overlap.
 - Generated artifacts belong in `reports/` when they are durable and in
   `build/reports/` when they are temporary.
+- Documentation-only assignments must stay out of code, tests, tools, generated
+  reports, and build artifacts.
 
 ## GPU Queue
 
@@ -48,4 +60,3 @@ Before merging a performance change:
 - CUTLASS comparisons record the external CUTLASS commit, profiler path, kernel
   name, and any layout caveat.
 - Windows mirror sync completes.
-

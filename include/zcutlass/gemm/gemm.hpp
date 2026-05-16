@@ -79,6 +79,11 @@ Status gemm(const gemm_api::GemmArguments& args);
 Status can_implement(const gemm_api::GemmArguments& args);
 size_t get_workspace_size(const gemm_api::GemmArguments& args);
 const char* selected_kernel_name(const GemmDesc& desc);
+const char* selected_kernel_family(const GemmDesc& desc);
+const char* selected_kernel_path(const GemmDesc& desc);
+int selected_kernel_tile_m(const GemmDesc& desc);
+int selected_kernel_tile_n(const GemmDesc& desc);
+int selected_kernel_tile_k(const GemmDesc& desc);
 int registered_gemm_operation_count();
 
 }  // namespace zcutlass

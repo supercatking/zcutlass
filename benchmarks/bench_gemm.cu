@@ -139,7 +139,7 @@ Options parse_options(int argc, char** argv) {
       options.json = true;
     } else if (arg == "--help") {
       std::cout << "Usage: zcutlass_bench [--m M --n N --k K] [--dtype f16|bf16]\n"
-                << "                      [--suite single|correctness|smoke|llm|llm-decode|llm-prefill|square|ragged]\n"
+                << "                      [--suite single|correctness|smoke|llm|llm-v1.5|llm-canonical|llm-decode|llm-prefill|square|ragged]\n"
                 << "                      [--providers zcutlass,cublas] [--json] [--output FILE]\n"
                 << "                      [--warmup N] [--iterations N] [--alpha X] [--beta X]\n";
       std::exit(0);
@@ -166,6 +166,13 @@ std::vector<Shape> make_shapes(const Options& options) {
   }
   if (options.suite == "ragged") {
     return {{63, 127, 65}, {65, 129, 127}, {127, 255, 129}, {257, 511, 255}};
+  }
+  if (options.suite == "llm-v1.5" || options.suite == "llm-canonical") {
+    return {{8, 4096, 4096},
+            {128, 4096, 4096},
+            {128, 16384, 4096},
+            {128, 4096, 16384},
+            {4096, 4096, 4096}};
   }
   if (options.suite == "llm" || options.suite == "llm-decode" ||
       options.suite == "llm-prefill") {
@@ -260,6 +267,22 @@ void emit_schema_record(std::ostream& out,
                         float ms,
                         double achieved_tflops,
                         const cudaDeviceProp& prop) {
+  zcutlass::GemmDesc desc{
+      shape.m,
+      shape.n,
+      shape.k,
+      shape.k,
+      shape.n,
+      shape.n,
+      shape.n,
+      options.dtype == "f16" ? zcutlass::DType::F16 : zcutlass::DType::BF16,
+      options.dtype == "f16" ? zcutlass::DType::F16 : zcutlass::DType::BF16,
+      options.dtype == "f16" ? zcutlass::DType::F16 : zcutlass::DType::BF16,
+      options.dtype == "f16" ? zcutlass::DType::F16 : zcutlass::DType::BF16,
+      options.alpha,
+      options.beta,
+      nullptr,
+      nullptr};
   out << std::fixed << std::setprecision(4)
       << "{\"schema_version\":1"
       << ",\"problem\":{\"operation\":\"gemm\",\"m\":" << shape.m << ",\"n\":"
@@ -276,7 +299,12 @@ void emit_schema_record(std::ostream& out,
       << zcutlass::version_major() << "." << zcutlass::version_minor() << "."
       << zcutlass::version_patch() << "\",\"registered_gemm_operations\":"
       << zcutlass::registered_gemm_operation_count() << "}"
-      << ",\"tags\":{\"suite\":\"" << options.suite << "\"}}"
+      << ",\"tags\":{\"suite\":\"" << options.suite << "\",\"shape_family\":\""
+      << zcutlass::selected_kernel_family(desc) << "\",\"kernel_path\":\""
+      << zcutlass::selected_kernel_path(desc) << "\",\"tile_m\":"
+      << zcutlass::selected_kernel_tile_m(desc) << ",\"tile_n\":"
+      << zcutlass::selected_kernel_tile_n(desc) << ",\"tile_k\":"
+      << zcutlass::selected_kernel_tile_k(desc) << "}}"
       << std::endl;
 }
 
@@ -389,7 +417,12 @@ void run_shape(const Shape& shape,
               << "{\"m\":" << shape.m << ",\"n\":" << shape.n << ",\"k\":" << shape.k
               << ",\"dtype\":\"" << options.dtype << "\",\"zcutlass_ms\":" << z_ms
               << ",\"kernel\":\"" << zcutlass::selected_kernel_name(desc)
-              << "\",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
+              << "\",\"shape_family\":\"" << zcutlass::selected_kernel_family(desc)
+              << "\",\"kernel_path\":\"" << zcutlass::selected_kernel_path(desc)
+              << "\",\"tile_m\":" << zcutlass::selected_kernel_tile_m(desc)
+              << ",\"tile_n\":" << zcutlass::selected_kernel_tile_n(desc)
+              << ",\"tile_k\":" << zcutlass::selected_kernel_tile_k(desc)
+              << ",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
               << ",\"cublas_tflops\":" << blas_tflops << ",\"speedup\":" << speedup << "}"
               << std::endl;
   } else {

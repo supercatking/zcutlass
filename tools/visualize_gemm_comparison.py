@@ -82,6 +82,14 @@ def builtin_shapes(suite: str, dtypes: Iterable[str]) -> list[Shape]:
         base = [(512, 512, 512), (1024, 1024, 1024), (2048, 2048, 2048), (4096, 4096, 4096)]
     elif suite == "ragged":
         base = [(63, 127, 65), (65, 129, 127), (127, 255, 129), (257, 511, 255)]
+    elif suite in {"llm-v1.5", "llm-canonical"}:
+        base = [
+            (8, 4096, 4096),
+            (128, 4096, 4096),
+            (128, 16384, 4096),
+            (128, 4096, 16384),
+            (4096, 4096, 4096),
+        ]
     elif suite in {"llm-decode", "llm-prefill", "llm"}:
         hs = [1024, 2048, 4096, 8192]
         if suite == "llm-decode":

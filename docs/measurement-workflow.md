@@ -11,6 +11,7 @@ cmake -S . -B build -G Ninja -DCMAKE_CUDA_ARCHITECTURES=120
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/zcutlass_bench --suite smoke --dtype both --json
+./build/zcutlass_bench --suite llm-v1.5 --dtype both --providers zcutlass --output build/llm_v15.jsonl
 ./build/zcutlass_bench --suite correctness --dtype both --providers zcutlass,cublas --output build/measurement.jsonl
 python3 tools/summarize_measurements.py build/measurement.jsonl
 python3 tools/visualize_gemm_comparison.py --suite smoke --dtype f16 --cutlass-jsonl build/cutlass_baseline.jsonl --output build/gemm_comparison.html
@@ -44,6 +45,7 @@ still measures its v1 row-major A/B/C/D runtime API.
 python3 tools/tune_gemm.py --suite smoke --dtype both --output build/tuning_results.json
 python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16
 python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass-dir /path/to/cutlass
+python3 tools/compare_cutlass.py --suite llm-v1.5 --dtype both --warmup 3 --iterations 10 --summary
 ```
 
 For schema-v1 JSONL that can feed the visualization tool directly:
@@ -98,8 +100,11 @@ python3 tools/ncu_gemm_summary.py build/profiles/gemm_m256_n4096_k4096_f16.csv \
   --summary-md build/profiles/gemm_m256_n4096_k4096_f16.summary.md
 ```
 
-Named suites currently include `single`, `correctness`, `smoke`, `llm`,
-`llm-decode`, `llm-prefill`, `square`, and `ragged`.
+Named suites currently include `single`, `correctness`, `smoke`, `llm-v1.5`,
+`llm-canonical` (alias), `llm`, `llm-decode`, `llm-prefill`, `square`, and
+`ragged`. The `llm-v1.5` suite is the canonical product gate:
+`8x4096x4096`, `128x4096x4096`, `128x16384x4096`,
+`128x4096x16384`, and `4096x4096x4096`, for both FP16 and BF16.
 
 Nsight Compute may fail with `ERR_NVGPUCTRPERM` until NVIDIA GPU performance
 counter permissions are enabled on the host/driver. `tools/profile_gemm.py`

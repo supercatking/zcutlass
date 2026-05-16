@@ -271,24 +271,26 @@ Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const voi
 template <typename T, int BlockM, int BlockN, DType Type, bool AlignedNoBetaBias>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
-  constexpr WmmaGemmOperation(const char* name) : description_{name,
-                                                              Type,
-                                                              Type,
-                                                              Type,
-                                                              Type,
-                                                              DType::F32,
-                                                              layout::LayoutKind::RowMajor,
-                                                              layout::LayoutKind::RowMajor,
-                                                              layout::LayoutKind::RowMajor,
-                                                              layout::LayoutKind::RowMajor,
-                                                              arch::ArchKind::Sm80,
-                                                              arch::OpClass::TensorOp,
-                                                              BlockM,
-                                                              BlockN,
-                                                              kWmmaK,
-                                                              AlignedNoBetaBias,
-                                                              !AlignedNoBetaBias,
-                                                              !AlignedNoBetaBias} {}
+  constexpr WmmaGemmOperation(const char* name, gemm_api::ShapeFamily family)
+      : description_{name,
+                     Type,
+                     Type,
+                     Type,
+                     Type,
+                     DType::F32,
+                     layout::LayoutKind::RowMajor,
+                     layout::LayoutKind::RowMajor,
+                     layout::LayoutKind::RowMajor,
+                     layout::LayoutKind::RowMajor,
+                     arch::ArchKind::Sm80,
+                     arch::OpClass::TensorOp,
+                     BlockM,
+                     BlockN,
+                     kWmmaK,
+                     family,
+                     AlignedNoBetaBias,
+                     !AlignedNoBetaBias,
+                     !AlignedNoBetaBias} {}
 
   const gemm_api::GemmOperationDescription& description() const override {
     return description_;
@@ -377,6 +379,25 @@ gemm_api::GemmArguments make_arguments(const GemmDesc& desc,
   return args;
 }
 
+gemm_api::ShapeFamily classify_shape_family(const gemm_api::GemmArguments& args) {
+  if (args.beta != 0.0f || args.bias != nullptr || args.A.ld != args.problem.k ||
+      args.B.ld != args.problem.n || args.C.ld != args.problem.n ||
+      args.D.ld != args.problem.n) {
+    return gemm_api::ShapeFamily::Fallback;
+  }
+  if (args.problem.m <= 16 && args.problem.n >= 1024 && args.problem.k >= 1024) {
+    return gemm_api::ShapeFamily::Decode;
+  }
+  if (args.problem.m >= 32 && args.problem.m <= 256 && args.problem.n >= 1024 &&
+      args.problem.k >= 1024) {
+    return gemm_api::ShapeFamily::Prefill;
+  }
+  if (args.problem.m >= 512 && args.problem.n >= 512 && args.problem.k >= 512) {
+    return gemm_api::ShapeFamily::Large;
+  }
+  return gemm_api::ShapeFamily::Fallback;
+}
+
 void ensure_builtin_operations_registered() {
   static bool initialized = false;
   if (initialized) {
@@ -384,25 +405,26 @@ void ensure_builtin_operations_registered() {
   }
 
   static const WmmaGemmOperation<half, 64, 128, DType::F16, true> f16_64x128_aligned(
-      "zcutlass_sm120_tensorop_f16_64x128x16_aligned");
+      "zcutlass_sm120_tensorop_f16_64x128x16_aligned", gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
-      bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned");
+      bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned",
+                          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 32, 128, DType::F16, false> f16_32x128(
-      "zcutlass_sm120_tensorop_f16_32x128x16");
+      "zcutlass_sm120_tensorop_f16_32x128x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<half, 32, 64, DType::F16, false> f16_32x64(
-      "zcutlass_sm120_tensorop_f16_32x64x16");
+      "zcutlass_sm120_tensorop_f16_32x64x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<__nv_bfloat16, 32, 128, DType::BF16, false> bf16_32x128(
-      "zcutlass_sm120_tensorop_bf16_32x128x16");
+      "zcutlass_sm120_tensorop_bf16_32x128x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<__nv_bfloat16, 32, 64, DType::BF16, false> bf16_32x64(
-      "zcutlass_sm120_tensorop_bf16_32x64x16");
+      "zcutlass_sm120_tensorop_bf16_32x64x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<half, 64, 128, DType::F16, false> f16_64x128(
-      "zcutlass_sm120_tensorop_f16_64x128x16");
+      "zcutlass_sm120_tensorop_f16_64x128x16", gemm_api::ShapeFamily::Fallback);
   static const WmmaGemmOperation<half, 64, 64, DType::F16, false> f16_64x64(
-      "zcutlass_sm120_tensorop_f16_64x64x16");
+      "zcutlass_sm120_tensorop_f16_64x64x16", gemm_api::ShapeFamily::Fallback);
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, false> bf16_64x128(
-      "zcutlass_sm120_tensorop_bf16_64x128x16");
+      "zcutlass_sm120_tensorop_bf16_64x128x16", gemm_api::ShapeFamily::Fallback);
   static const WmmaGemmOperation<__nv_bfloat16, 64, 64, DType::BF16, false> bf16_64x64(
-      "zcutlass_sm120_tensorop_bf16_64x64x16");
+      "zcutlass_sm120_tensorop_bf16_64x64x16", gemm_api::ShapeFamily::Fallback);
 
   auto& manifest = gemm_api::global_manifest();
   manifest.append(&f16_64x128_aligned);
@@ -429,6 +451,16 @@ const char* select_builtin_kernel_name(const GemmDesc& desc) {
     return operation->description().name;
   }
   return "none";
+}
+
+const gemm_api::GemmOperationDescription* select_builtin_description(const GemmDesc& desc) {
+  ensure_builtin_operations_registered();
+  const gemm_api::GemmArguments args = make_arguments(
+      desc, reinterpret_cast<const void*>(1), reinterpret_cast<const void*>(1),
+      desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
+      reinterpret_cast<void*>(1));
+  const auto* operation = gemm_api::global_manifest().find_best(args, {});
+  return operation != nullptr ? &operation->description() : nullptr;
 }
 
 template <typename T>
@@ -469,6 +501,44 @@ const char* selected_kernel_name(const GemmDesc& desc) {
                                           desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
                                           reinterpret_cast<const void*>(1));
   return validation == Status::Success ? select_builtin_kernel_name(desc) : "none";
+}
+
+const char* selected_kernel_family(const GemmDesc& desc) {
+  const Status validation = validate_desc(desc, reinterpret_cast<const void*>(1),
+                                          reinterpret_cast<const void*>(1),
+                                          desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
+                                          reinterpret_cast<const void*>(1));
+  if (validation != Status::Success) {
+    return "none";
+  }
+  const gemm_api::GemmArguments args = make_arguments(
+      desc, reinterpret_cast<const void*>(1), reinterpret_cast<const void*>(1),
+      desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
+      reinterpret_cast<void*>(1));
+  return gemm_api::shape_family_name(classify_shape_family(args));
+}
+
+const char* selected_kernel_path(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  if (description == nullptr) {
+    return "none";
+  }
+  return description->requires_aligned_tiles ? "fast" : "fallback";
+}
+
+int selected_kernel_tile_m(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  return description != nullptr ? description->tile_m : 0;
+}
+
+int selected_kernel_tile_n(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  return description != nullptr ? description->tile_n : 0;
+}
+
+int selected_kernel_tile_k(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  return description != nullptr ? description->tile_k : 0;
 }
 
 int registered_gemm_operation_count() {

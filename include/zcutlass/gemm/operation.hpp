@@ -10,6 +10,15 @@
 
 namespace zcutlass::gemm_api {
 
+enum class ShapeFamily {
+  Decode,
+  Prefill,
+  Large,
+  Fallback,
+};
+
+const char* shape_family_name(ShapeFamily family);
+
 struct GemmPreference {
   int alignment_a = 1;
   int alignment_b = 1;
@@ -32,6 +41,7 @@ struct GemmOperationDescription {
   int tile_m = 0;
   int tile_n = 0;
   int tile_k = 0;
+  ShapeFamily family = ShapeFamily::Fallback;
   bool requires_aligned_tiles = false;
   bool supports_beta = true;
   bool supports_bias = true;

@@ -108,6 +108,20 @@ ComputeCapability current_device_cc() {
 
 namespace zcutlass::gemm_api {
 
+const char* shape_family_name(ShapeFamily family) {
+  switch (family) {
+    case ShapeFamily::Decode:
+      return "decode";
+    case ShapeFamily::Prefill:
+      return "prefill";
+    case ShapeFamily::Large:
+      return "large";
+    case ShapeFamily::Fallback:
+      return "fallback";
+  }
+  return "unknown";
+}
+
 void Manifest::append(const GemmOperation* operation) {
   if (operation != nullptr && size_ < kMaxOperations) {
     operations_[size_++] = operation;
@@ -140,4 +154,3 @@ Manifest& global_manifest() {
 void initialize_builtin_operations() {}
 
 }  // namespace zcutlass::gemm_api
-

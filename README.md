@@ -4,6 +4,11 @@ zcutlass is a clean-room CUDA GEMM library aimed first at NVIDIA GeForce RTX 50
 series GPUs (`sm_120`). The v1 surface is deliberately small: row-major dense
 FP16/BF16 GEMM with FP32 accumulation and an optional N-broadcast bias.
 
+The v1.5 goal is a dedicated LLM GEMM library optimized for RTX 5080/SM120
+serving and benchmarking shapes. Arbitrary row-major FP16/BF16 GEMM remains
+supported for correctness coverage and fallback dispatch, but it is not the
+optimized target for v1.5.
+
 The project studies public CUTLASS design ideas and uses CUTLASS/cuBLAS only as
 external baselines. CUTLASS source is not vendored into this repository.
 
@@ -12,8 +17,11 @@ external baselines. CUTLASS source is not vendored into this repository.
 - [CUTLASS alignment roadmap](docs/cutlass-alignment-roadmap.md)
 - [Measurement workflow](docs/measurement-workflow.md)
 - [Development workflow](docs/development-workflow.md)
+- [Agent operating notes](AGENTS.md)
+- [LLM kernel family plan](docs/llm-kernel-family-plan.md)
 - [Kernel optimization notes](docs/kernel-optimization-notes.md)
 - [Agent coordination](docs/agent-coordination.md)
+- [2026-05-17 v1.5 LLM GEMM goal lock](reports/2026-05-17-v15-llm-goal-lock.md)
 - [2026-05-16 RTX 5080 CUTLASS comparison](reports/2026-05-16-sm120-gemm-vs-cutlass.md)
 - [2026-05-16 Batch 1 evidence chain](reports/2026-05-16-batch1-evidence-chain.md)
 
@@ -51,6 +59,11 @@ median latency plus TFLOP/s. The `llm` suite covers common hidden sizes
 start with `smoke` while iterating. CUTLASS comparison is intentionally routed
 through an external `cutlass_profiler`; no CUTLASS source is copied into this
 repository.
+
+Kernel growth for v1.5 must follow CUTLASS-style tile families and
+shape-bucket dispatch. Do not add many full-shape-specific kernels for individual
+LLM dimensions; add reusable tile/pipeline/epilogue families and route nearby
+problem shapes into buckets that can be measured and maintained.
 
 ## Roadmap Docs
 

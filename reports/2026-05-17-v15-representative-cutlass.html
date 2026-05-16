@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>zcutlass</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 28px; color: #1f2933; }
+    h1 { margin-bottom: 4px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+    .card { border: 1px solid #d8dee4; border-radius: 8px; padding: 12px 16px; min-width: 150px; }
+    .metric { font-size: 24px; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: middle; }
+    th { background: #f6f8fa; position: sticky; top: 0; }
+    .bar { display: inline-block; height: 8px; background: #2f80ed; border-radius: 4px; margin-left: 8px; }
+    .win { color: #11805a; font-weight: 700; }
+    .behind { color: #bb3e03; font-weight: 700; }
+    .note { color: #52606d; }
+    svg { width: 100%; max-width: 720px; height: 250px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+  </style>
+</head>
+<body>
+  <h1>zcutlass</h1>
+  <div class="note">Speedup is CUTLASS latency / zcutlass latency. Values above 1.0 mean zcutlass is faster.</div>
+  <div class="cards">
+    <div class="card"><div>Compared Shapes</div><div class="metric">2</div></div>
+    <div class="card"><div>Geomean Speedup</div><div class="metric">0.846x</div></div>
+    <div class="card"><div>zcutlass Wins</div><div class="metric">0</div></div>
+    <div class="card"><div>zcutlass Behind</div><div class="metric">2</div></div>
+  </div>
+  <h2>Speedup Scatter</h2>
+  <svg viewBox="0 0 720 250" role="img">
+    <line x1="50" y1="220" x2="700" y2="220" stroke="#cbd5e1"/>
+    <line x1="50" y1="130" x2="700" y2="130" stroke="#11805a" stroke-dasharray="4 4"/>
+    <text x="8" y="134" fill="#11805a">1.0x</text>
+    <text x="8" y="44" fill="#52606d">2.0x</text>
+    <line x1="50" y1="40" x2="700" y2="40" stroke="#e5e7eb"/>
+    <circle cx="70" cy="155.6" r="5" fill="#bb3e03"><title>bf16 128x4096x4096 0.716x</title></circle><circle cx="104" cy="130.0" r="5" fill="#11805a"><title>f16 128x4096x4096 1.000x</title></circle>
+  </svg>
+  <h2>Shape Results</h2>
+  <table>
+    <thead>
+      <tr><th>Shape</th><th>zcutlass ms</th><th>CUTLASS ms</th><th>Speedup</th><th>zcutlass TFLOP/s</th><th>CUTLASS TFLOP/s</th><th>zcutlass kernel</th><th>CUTLASS kernel</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>bf16 128x4096x4096</td><td>0.2833</td><td>0.2027</td><td class='behind'>0.716x</td><td>15.16 <div class="bar" style="width:128.8px"></div></td><td>21.19 <div class="bar" style="width:180.0px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16_aligned</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>f16 128x4096x4096</td><td>0.3049</td><td>0.3049</td><td class='behind'>1.000x</td><td>14.09 <div class="bar" style="width:119.6px"></div></td><td>14.09 <div class="bar" style="width:119.6px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

@@ -182,6 +182,14 @@ def builtin_shapes(suite: str, dtypes: Iterable[str]) -> list[Shape]:
         base = [(512, 512, 512), (1024, 1024, 1024), (2048, 2048, 2048), (4096, 4096, 4096)]
     elif suite == "ragged":
         base = [(63, 127, 65), (65, 129, 127), (127, 255, 129), (257, 511, 255)]
+    elif suite in {"llm-v1.5", "llm-canonical"}:
+        base = [
+            (8, 4096, 4096),
+            (128, 4096, 4096),
+            (128, 16384, 4096),
+            (128, 4096, 16384),
+            (4096, 4096, 4096),
+        ]
     elif suite in {"llm-decode", "llm-prefill", "llm"}:
         hidden = [1024, 2048, 4096, 8192]
         ms = {
@@ -197,6 +205,16 @@ def builtin_shapes(suite: str, dtypes: Iterable[str]) -> list[Shape]:
     else:
         raise SystemExit(f"Unknown suite '{suite}'")
     return [Shape(m, n, k, dtype) for dtype in dtypes for (m, n, k) in base]
+
+
+def shape_family(shape: Shape) -> str:
+    if shape.m <= 16 and shape.n >= 1024 and shape.k >= 1024:
+        return "decode"
+    if 32 <= shape.m <= 256 and shape.n >= 1024 and shape.k >= 1024:
+        return "prefill"
+    if shape.m >= 512 and shape.n >= 512 and shape.k >= 512:
+        return "large"
+    return "fallback"
 
 
 def selected_shapes(args: argparse.Namespace) -> list[Shape]:
@@ -296,7 +314,14 @@ def run_zcutlass(bench: pathlib.Path, shapes: list[Shape], args: argparse.Namesp
                     str(record.get("kernel", "")),
                     cmd,
                     {"zcutlass_repo": str(repo_root())},
-                    {"suite": args.suite},
+                    {
+                        "suite": args.suite,
+                        "shape_family": record.get("shape_family", shape_family(shape)),
+                        "kernel_path": record.get("kernel_path", ""),
+                        "tile_m": record.get("tile_m", 0),
+                        "tile_n": record.get("tile_n", 0),
+                        "tile_k": record.get("tile_k", 0),
+                    },
                 )
             )
     return measurements
@@ -351,7 +376,11 @@ def run_cutlass_profiler(
                     "",
                     cmd,
                     environment,
-                    {"suite": args.suite, "row_major_caveat": DEFAULT_ROW_MAJOR_CAVEAT},
+                    {
+                        "suite": args.suite,
+                        "shape_family": shape_family(shape),
+                        "row_major_caveat": DEFAULT_ROW_MAJOR_CAVEAT,
+                    },
                     status="failed",
                     stdout=proc.stdout.strip(),
                     stderr=proc.stderr.strip(),
@@ -372,7 +401,11 @@ def run_cutlass_profiler(
             best = max(parsed, key=lambda item: item.tflops)
         best.command = cmd
         best.environment = environment
-        best.tags = {"suite": args.suite, "row_major_caveat": DEFAULT_ROW_MAJOR_CAVEAT}
+        best.tags = {
+            "suite": args.suite,
+            "shape_family": shape_family(shape),
+            "row_major_caveat": DEFAULT_ROW_MAJOR_CAVEAT,
+        }
         measurements.append(best)
     return measurements
 

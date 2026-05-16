@@ -195,6 +195,28 @@ void expect_kernel_not_contains(const std::string& name,
   }
 }
 
+void expect_family(const std::string& name,
+                   const zcutlass::GemmDesc& desc,
+                   const std::string& expected) {
+  const std::string family = zcutlass::selected_kernel_family(desc);
+  if (family != expected) {
+    std::cerr << "Expected " << name << " family '" << expected << "', got "
+              << family << std::endl;
+    std::exit(1);
+  }
+}
+
+void expect_path(const std::string& name,
+                 const zcutlass::GemmDesc& desc,
+                 const std::string& expected) {
+  const std::string path = zcutlass::selected_kernel_path(desc);
+  if (path != expected) {
+    std::cerr << "Expected " << name << " path '" << expected << "', got "
+              << path << std::endl;
+    std::exit(1);
+  }
+}
+
 template <typename T>
 void run_case(const std::string& name,
               cublasHandle_t handle,
@@ -518,18 +540,47 @@ void run_dispatch_tests() {
                           nullptr,
                           nullptr};
   expect_kernel_contains("small-M f16 dispatch", desc, "64x128x16");
+  expect_family("small-M f16 dispatch", desc, "fallback");
 
   desc.m = 64;
   expect_kernel_contains("M=64 f16 dispatch", desc, "64x128x16_aligned");
+  expect_family("M=64 f16 dispatch", desc, "fallback");
+  expect_path("M=64 f16 dispatch", desc, "fast");
+
+  desc.m = 8;
+  desc.n = 4096;
+  desc.k = 4096;
+  desc.lda = 4096;
+  desc.ldb = 4096;
+  desc.ldc = 4096;
+  desc.ldd = 4096;
+  expect_family("LLM decode canonical dispatch", desc, "decode");
+  expect_path("LLM decode canonical dispatch", desc, "fallback");
+
+  desc.m = 128;
+  expect_family("LLM prefill canonical dispatch", desc, "prefill");
+  expect_path("LLM prefill canonical dispatch", desc, "fast");
+
+  desc.m = 4096;
+  expect_family("large canonical dispatch", desc, "large");
 
   desc.alpha = 0.5f;
   expect_kernel_contains("alpha f16 dispatch", desc, "64x128x16");
   expect_kernel_not_contains("alpha f16 dispatch", desc, "aligned");
+  expect_family("alpha f16 dispatch", desc, "large");
+  expect_path("alpha f16 dispatch", desc, "fallback");
 
   desc.alpha = 1.0f;
+  desc.m = 64;
+  desc.n = 256;
+  desc.k = 256;
   desc.lda = 260;
+  desc.ldb = 256;
+  desc.ldc = 256;
+  desc.ldd = 256;
   expect_kernel_contains("padded lda f16 dispatch", desc, "64x128x16");
   expect_kernel_not_contains("padded lda f16 dispatch", desc, "aligned");
+  expect_family("padded lda f16 dispatch", desc, "fallback");
 
   desc.lda = 256;
   desc.n = 64;
