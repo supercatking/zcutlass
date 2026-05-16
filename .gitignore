@@ -15,4 +15,5 @@ cmake-build-*/
 *.log
 .cache/
 .vscode/
-
+.*.swp
+*.swp
