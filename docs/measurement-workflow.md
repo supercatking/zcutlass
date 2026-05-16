@@ -12,6 +12,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/zcutlass_bench --suite smoke --dtype both --json
 ./build/zcutlass_bench --suite correctness --dtype both --providers zcutlass,cublas --output build/measurement.jsonl
+python3 tools/summarize_measurements.py build/measurement.jsonl
 ```
 
 ## Compare

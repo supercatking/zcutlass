@@ -35,6 +35,7 @@ compute-sanitizer ./build/zcutlass_tests
 ./build/zcutlass_bench --suite smoke --dtype f16
 ./build/zcutlass_bench --m 256 --n 4096 --k 4096 --dtype bf16 --json
 ./build/zcutlass_bench --suite correctness --dtype both --providers zcutlass,cublas --output build/measurement.jsonl
+python3 tools/summarize_measurements.py build/measurement.jsonl
 python3 tools/tune_gemm.py --suite smoke --dtype both --output build/tuning_results.json
 python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16
 python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass-dir /path/to/cutlass
