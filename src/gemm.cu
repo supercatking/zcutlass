@@ -273,7 +273,10 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                                                               arch::OpClass::TensorOp,
                                                               BlockM,
                                                               BlockN,
-                                                              kWmmaK} {}
+                                                              kWmmaK,
+                                                              false,
+                                                              true,
+                                                              true} {}
 
   const gemm_api::GemmOperationDescription& description() const override {
     return description_;
@@ -420,6 +423,11 @@ const char* selected_kernel_name(const GemmDesc& desc) {
                                           desc.beta != 0.0f ? reinterpret_cast<const void*>(1) : nullptr,
                                           reinterpret_cast<const void*>(1));
   return validation == Status::Success ? select_builtin_kernel_name(desc) : "none";
+}
+
+int registered_gemm_operation_count() {
+  ensure_builtin_operations_registered();
+  return gemm_api::global_manifest().size();
 }
 
 Status gemm(const gemm_api::GemmArguments& args) {

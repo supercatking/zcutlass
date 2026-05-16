@@ -12,6 +12,7 @@ external baselines. CUTLASS source is not vendored into this repository.
 - [CUTLASS alignment roadmap](docs/cutlass-alignment-roadmap.md)
 - [Measurement workflow](docs/measurement-workflow.md)
 - [Development workflow](docs/development-workflow.md)
+- [Kernel optimization notes](docs/kernel-optimization-notes.md)
 
 ## Build
 

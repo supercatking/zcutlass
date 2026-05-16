@@ -32,6 +32,9 @@ struct GemmOperationDescription {
   int tile_m = 0;
   int tile_n = 0;
   int tile_k = 0;
+  bool requires_aligned_tiles = false;
+  bool supports_beta = true;
+  bool supports_bias = true;
 };
 
 class GemmOperation {
@@ -45,4 +48,3 @@ class GemmOperation {
 };
 
 }  // namespace zcutlass::gemm_api
-

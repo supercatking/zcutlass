@@ -274,7 +274,8 @@ void emit_schema_record(std::ostream& out,
       << ",\"environment\":{\"gpu_name\":\"" << prop.name << "\",\"sm\":"
       << prop.major << prop.minor << ",\"zcutlass_version\":\""
       << zcutlass::version_major() << "." << zcutlass::version_minor() << "."
-      << zcutlass::version_patch() << "\"}"
+      << zcutlass::version_patch() << "\",\"registered_gemm_operations\":"
+      << zcutlass::registered_gemm_operation_count() << "}"
       << ",\"tags\":{\"suite\":\"" << options.suite << "\"}}"
       << std::endl;
 }
