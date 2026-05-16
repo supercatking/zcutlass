@@ -16,7 +16,7 @@ if ($resolvedDestination -notlike "C:\Users\Admin\Documents\Codex\zcutlass*") {
 
 New-Item -ItemType Directory -Force -Path $resolvedDestination | Out-Null
 
-robocopy $Source $resolvedDestination /MIR /XD ".git" "build" ".cache" ".vscode" /XF "*.o" "*.obj" "*.a" "*.lib" "*.so" "*.dll" "*.exe" "*.pdb" "*.sass" "*.cubin" "*.ptx" "*.json" "*.log"
+robocopy $Source $resolvedDestination /MIR /XD ".git" "build" ".cache" ".vscode" "__pycache__" /XF "*.o" "*.obj" "*.a" "*.lib" "*.so" "*.dll" "*.exe" "*.pdb" "*.sass" "*.cubin" "*.ptx" "*.json" "*.log" "*.pyc"
 $code = $LASTEXITCODE
 
 # Robocopy uses 0-7 for success conditions.
@@ -26,4 +26,3 @@ if ($code -gt 7) {
 
 Write-Host "Mirrored zcutlass source to $resolvedDestination"
 exit 0
-

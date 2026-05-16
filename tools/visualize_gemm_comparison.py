@@ -224,8 +224,12 @@ def run_cutlass_profiler(profiler: pathlib.Path, shapes: list[Shape], warmup: in
     measurements: list[Measurement] = []
     for shape in shapes:
         dtype = "f16" if shape.dtype == "f16" else "bf16"
-        tmp = repo_root() / "build" / f".cutlass_{shape.dtype}_{shape.m}_{shape.n}_{shape.k}.csv"
+        c_dtype = dtype
+        tmp_base = repo_root() / "build" / f".cutlass_{shape.dtype}_{shape.m}_{shape.n}_{shape.k}"
+        tmp = tmp_base.with_suffix(".csv")
+        tmp_gemm = tmp_base.with_suffix(".gemm.csv")
         tmp.parent.mkdir(parents=True, exist_ok=True)
+        kernel_filter = "*s1688gemm_f16*tt*align8" if shape.dtype == "f16" else "*s16816gemm_bf16*tt*align8"
         cmd = [
             str(profiler),
             "--operation=Gemm",
@@ -234,18 +238,24 @@ def run_cutlass_profiler(profiler: pathlib.Path, shapes: list[Shape], warmup: in
             f"--k={shape.k}",
             f"--A={dtype}:row",
             f"--B={dtype}:row",
-            f"--C={dtype}:row",
+            f"--C={c_dtype}:column",
+            f"--D={c_dtype}:column",
             "--accum=f32",
             "--providers=cutlass",
+            f"--kernels={kernel_filter}",
+            "--verification-enabled=false",
+            "--verbose=false",
             f"--warmup-iterations={warmup}",
             f"--profiling-iterations={iterations}",
-            f"--output={tmp}",
+            f"--output={tmp_base}",
         ]
         proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
             print(f"[warn] CUTLASS profiler failed for {shape.label}: {proc.stderr.strip()}", file=sys.stderr)
             continue
-        if not tmp.exists() and proc.stdout.strip():
+        if tmp_gemm.exists():
+            tmp = tmp_gemm
+        elif not tmp.exists() and proc.stdout.strip():
             tmp.write_text(proc.stdout)
         parsed = load_cutlass_csv(tmp, shape.dtype)
         if parsed:

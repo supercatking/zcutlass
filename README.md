@@ -13,6 +13,7 @@ external baselines. CUTLASS source is not vendored into this repository.
 - [Measurement workflow](docs/measurement-workflow.md)
 - [Development workflow](docs/development-workflow.md)
 - [Kernel optimization notes](docs/kernel-optimization-notes.md)
+- [2026-05-16 RTX 5080 CUTLASS comparison](reports/2026-05-16-sm120-gemm-vs-cutlass.md)
 
 ## Build
 

@@ -16,6 +16,27 @@ python3 tools/summarize_measurements.py build/measurement.jsonl
 python3 tools/visualize_gemm_comparison.py --suite smoke --dtype f16 --cutlass-jsonl build/cutlass_baseline.jsonl --output build/gemm_comparison.html
 ```
 
+To run against a locally built official NVIDIA CUTLASS profiler:
+
+```bash
+python3 tools/visualize_gemm_comparison.py \
+  --shape 1x1024x1024 \
+  --shape 8x2048x2048 \
+  --shape 64x1024x1024 \
+  --shape 128x2048x2048 \
+  --dtype both \
+  --warmup 3 \
+  --iterations 10 \
+  --cutlass-profiler /home/zyz/cutlass-official/build-profiler/tools/profiler/cutlass_profiler \
+  --output build/reports/gemm_vs_cutlass_real.html \
+  --save-jsonl build/reports/gemm_vs_cutlass_real.jsonl
+```
+
+The current CUTLASS 4.5.0 profiler build does not emit f16/bf16 row-major D
+instances for the tested row-row shapes, so the script uses row-major A/B and
+C/D column-major CUTLASS profiler instances as the external baseline. zcutlass
+still measures its v1 row-major A/B/C/D runtime API.
+
 ## Compare
 
 ```bash
