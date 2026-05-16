@@ -1,0 +1,20 @@
+========= COMPUTE-SANITIZER
+Running zcutlass tests on NVIDIA GeForce RTX 5080 sm_120
+[pass] invalid argument checks
+[pass] dispatch checks
+[pass] f16 zero-size checks
+[pass] bf16 zero-size checks
+[pass] f16 tiny padded bias max_abs=0
+[pass] f16 16x16 max_abs=0
+[pass] f16 rectangular max_abs=1.90735e-06 worst_index=6004
+[pass] f16 ragged alpha no-bias padded A/D max_abs=4.76837e-07 worst_index=322
+[pass] f16 ragged beta no-bias max_abs=6.10352e-05 worst_index=905
+[pass] f16 llm-smoke max_abs=6.10352e-05 worst_index=1389
+[pass] bf16 tiny padded bias max_abs=0
+[pass] bf16 16x16 max_abs=0
+[pass] bf16 rectangular max_abs=0.000488281 worst_index=4537
+[pass] bf16 ragged alpha no-bias padded B/C/D max_abs=0
+[pass] bf16 ragged beta no-bias max_abs=0
+[pass] bf16 llm-smoke max_abs=0
+All zcutlass tests passed.
+========= ERROR SUMMARY: 0 errors

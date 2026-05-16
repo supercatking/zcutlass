@@ -101,6 +101,19 @@ float tolerance<__nv_bfloat16>() {
 }
 
 template <typename T>
+float sentinel_value();
+
+template <>
+float sentinel_value<half>() {
+  return -7.5f;
+}
+
+template <>
+float sentinel_value<__nv_bfloat16>() {
+  return -6.5f;
+}
+
+template <typename T>
 std::vector<T> make_tensor(int64_t rows, int64_t cols, int64_t ld, int seed) {
   std::mt19937 rng(seed);
   std::uniform_real_distribution<float> dist(-0.35f, 0.35f);
@@ -147,6 +160,41 @@ std::vector<float> reference(const std::vector<T>& A,
   return out;
 }
 
+void expect_status(const std::string& name,
+                   zcutlass::Status actual,
+                   zcutlass::Status expected) {
+  if (actual != expected) {
+    std::cerr << "Expected " << name << " to be "
+              << zcutlass::status_to_string(expected) << ", got "
+              << zcutlass::status_to_string(actual) << std::endl;
+    std::exit(1);
+  }
+}
+
+void expect_kernel_contains(const std::string& name,
+                            const zcutlass::GemmDesc& desc,
+                            const std::string& expected) {
+  const char* kernel_name = zcutlass::selected_kernel_name(desc);
+  const std::string selected = kernel_name != nullptr ? kernel_name : "null";
+  if (selected.find(expected) == std::string::npos) {
+    std::cerr << "Expected " << name << " to select a kernel containing '" << expected
+              << "', got " << selected << std::endl;
+    std::exit(1);
+  }
+}
+
+void expect_kernel_not_contains(const std::string& name,
+                                const zcutlass::GemmDesc& desc,
+                                const std::string& unexpected) {
+  const char* kernel_name = zcutlass::selected_kernel_name(desc);
+  const std::string selected = kernel_name != nullptr ? kernel_name : "null";
+  if (selected.find(unexpected) != std::string::npos) {
+    std::cerr << "Expected " << name << " to avoid kernels containing '" << unexpected
+              << "', got " << selected << std::endl;
+    std::exit(1);
+  }
+}
+
 template <typename T>
 void run_case(const std::string& name,
               cublasHandle_t handle,
@@ -156,16 +204,19 @@ void run_case(const std::string& name,
               float alpha,
               float beta,
               bool use_bias,
-              bool padded) {
-  const int64_t lda = k + (padded ? 3 : 0);
-  const int64_t ldb = n + (padded ? 5 : 0);
-  const int64_t ldc = n + (padded ? 7 : 0);
-  const int64_t ldd = n + (padded ? 11 : 0);
+              int64_t lda_pad,
+              int64_t ldb_pad,
+              int64_t ldc_pad,
+              int64_t ldd_pad) {
+  const int64_t lda = k + lda_pad;
+  const int64_t ldb = n + ldb_pad;
+  const int64_t ldc = n + ldc_pad;
+  const int64_t ldd = n + ldd_pad;
 
   std::vector<T> h_a = make_tensor<T>(m, k, lda, 17);
   std::vector<T> h_b = make_tensor<T>(k, n, ldb, 29);
   std::vector<T> h_c = make_tensor<T>(m, n, ldc, 41);
-  std::vector<T> h_d(m * ldd, from_float<T>(0.0f));
+  std::vector<T> h_d(m * ldd, from_float<T>(sentinel_value<T>()));
   std::vector<T> h_bias = make_tensor<T>(1, n, n, 53);
 
   T* d_a = nullptr;
@@ -273,12 +324,87 @@ void run_case(const std::string& name,
   }
   std::cout << std::endl;
 
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = n; col < ldd; ++col) {
+      const float actual = to_float<T>(h_d[row * ldd + col]);
+      const float expected_sentinel = to_float<T>(from_float<T>(sentinel_value<T>()));
+      if (std::abs(actual - expected_sentinel) > 0.0f) {
+        std::cerr << "Output padding overwrite in " << name << " at (" << row << ", "
+                  << col << "): actual=" << actual
+                  << " expected=" << expected_sentinel << std::endl;
+        std::exit(1);
+      }
+    }
+  }
+
   CHECK_CUDA(cudaFree(d_a));
   CHECK_CUDA(cudaFree(d_b));
   CHECK_CUDA(cudaFree(d_c));
   CHECK_CUDA(cudaFree(d_d));
   CHECK_CUDA(cudaFree(d_blas));
   CHECK_CUDA(cudaFree(d_bias));
+}
+
+
+template <typename T>
+void run_case(const std::string& name,
+              cublasHandle_t handle,
+              int64_t m,
+              int64_t n,
+              int64_t k,
+              float alpha,
+              float beta,
+              bool use_bias,
+              bool padded) {
+  run_case<T>(name,
+              handle,
+              m,
+              n,
+              k,
+              alpha,
+              beta,
+              use_bias,
+              padded ? 3 : 0,
+              padded ? 5 : 0,
+              padded ? 7 : 0,
+              padded ? 11 : 0);
+}
+
+template <typename T>
+void run_zero_size_tests() {
+  zcutlass::GemmDesc desc{0,
+                          16,
+                          16,
+                          16,
+                          16,
+                          16,
+                          16,
+                          dtype<T>(),
+                          dtype<T>(),
+                          dtype<T>(),
+                          dtype<T>(),
+                          1.0f,
+                          0.0f,
+                          nullptr,
+                          nullptr};
+  expect_status("zero m with null tensors",
+                zcutlass::gemm(desc, nullptr, nullptr, nullptr, nullptr),
+                zcutlass::Status::Success);
+
+  desc.m = 16;
+  desc.n = 0;
+  expect_status("zero n with null tensors",
+                zcutlass::gemm(desc, nullptr, nullptr, nullptr, nullptr),
+                zcutlass::Status::Success);
+
+  desc.n = 16;
+  desc.k = 0;
+  desc.beta = 1.0f;
+  expect_status("zero k with null tensors and beta",
+                zcutlass::gemm(desc, nullptr, nullptr, nullptr, nullptr),
+                zcutlass::Status::Success);
+
+  std::cout << "[pass] " << zcutlass::dtype_name(dtype<T>()) << " zero-size checks" << std::endl;
 }
 
 void run_invalid_argument_tests() {
@@ -298,30 +424,64 @@ void run_invalid_argument_tests() {
   desc.beta = 0.0f;
 
   half* ptr = reinterpret_cast<half*>(0x1);
-  if (zcutlass::gemm(desc, nullptr, ptr, nullptr, ptr) != zcutlass::Status::InvalidArgument) {
-    std::cerr << "Expected null A to be InvalidArgument" << std::endl;
-    std::exit(1);
-  }
+  expect_status("null A", zcutlass::gemm(desc, nullptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+  expect_status("null B", zcutlass::gemm(desc, ptr, nullptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+  expect_status("null D", zcutlass::gemm(desc, ptr, ptr, nullptr, nullptr),
+                zcutlass::Status::InvalidArgument);
 
   desc.beta = 1.0f;
-  if (zcutlass::gemm(desc, ptr, ptr, nullptr, ptr) != zcutlass::Status::InvalidArgument) {
-    std::cerr << "Expected missing C with beta != 0 to be InvalidArgument" << std::endl;
-    std::exit(1);
-  }
+  expect_status("missing C with beta != 0", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
 
   desc.beta = 0.0f;
+  desc.m = -1;
+  expect_status("negative m", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+
+  desc.m = 16;
+  desc.lda = 15;
+  expect_status("lda smaller than k", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+
+  desc.lda = 16;
+  desc.ldb = 15;
+  expect_status("ldb smaller than n", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+
+  desc.ldb = 16;
+  desc.ldd = 15;
+  expect_status("ldd smaller than n", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::InvalidArgument);
+
+  desc.ldd = 16;
+  desc.beta = 1.0f;
+  desc.ldc = 15;
+  expect_status("ldc smaller than n with beta", zcutlass::gemm(desc, ptr, ptr, ptr, ptr),
+                zcutlass::Status::InvalidArgument);
+
+  desc.ldc = 16;
+  desc.beta = 0.0f;
   desc.b_type = zcutlass::DType::BF16;
-  if (zcutlass::gemm(desc, ptr, ptr, nullptr, ptr) != zcutlass::Status::NotSupported) {
-    std::cerr << "Expected mixed dtypes to be NotSupported" << std::endl;
-    std::exit(1);
-  }
+  expect_status("mixed dtypes", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::NotSupported);
 
   desc.b_type = zcutlass::DType::F16;
+  desc.a_type = zcutlass::DType::F32;
+  desc.b_type = zcutlass::DType::F32;
+  desc.c_type = zcutlass::DType::F32;
+  desc.d_type = zcutlass::DType::F32;
+  expect_status("unsupported f32 storage", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::NotSupported);
+
+  desc.a_type = zcutlass::DType::F16;
+  desc.b_type = zcutlass::DType::F16;
+  desc.c_type = zcutlass::DType::F16;
+  desc.d_type = zcutlass::DType::F16;
   desc.a_layout = zcutlass::layout::LayoutKind::ColumnMajor;
-  if (zcutlass::gemm(desc, ptr, ptr, nullptr, ptr) != zcutlass::Status::NotSupported) {
-    std::cerr << "Expected column-major layout to be NotSupported for v1" << std::endl;
-    std::exit(1);
-  }
+  expect_status("column-major layout", zcutlass::gemm(desc, ptr, ptr, nullptr, ptr),
+                zcutlass::Status::NotSupported);
 
   zcutlass::gemm_api::GemmArguments args{};
   args.problem = {16, 16, 16};
@@ -331,10 +491,8 @@ void run_invalid_argument_tests() {
   args.D = {ptr, zcutlass::DType::F16, zcutlass::layout::LayoutKind::RowMajor, 16};
   args.alpha = 1.0f;
   args.beta = 0.0f;
-  if (zcutlass::can_implement(args) != zcutlass::Status::Success) {
-    std::cerr << "Expected GemmArguments row-major f16 path to be implementable" << std::endl;
-    std::exit(1);
-  }
+  expect_status("GemmArguments row-major f16 path", zcutlass::can_implement(args),
+                zcutlass::Status::Success);
   if (zcutlass::get_workspace_size(args) != 0) {
     std::cerr << "Expected v1 GEMM workspace size to be zero" << std::endl;
     std::exit(1);
@@ -344,32 +502,47 @@ void run_invalid_argument_tests() {
 }
 
 void run_dispatch_tests() {
-  zcutlass::GemmDesc desc{};
-  desc.m = 8;
-  desc.n = 256;
-  desc.k = 256;
-  desc.lda = 256;
-  desc.ldb = 256;
-  desc.ldc = 256;
-  desc.ldd = 256;
-  desc.a_type = zcutlass::DType::F16;
-  desc.b_type = zcutlass::DType::F16;
-  desc.c_type = zcutlass::DType::F16;
-  desc.d_type = zcutlass::DType::F16;
-  desc.alpha = 1.0f;
-  desc.beta = 0.0f;
-  if (std::string(zcutlass::selected_kernel_name(desc)).find("64x128x16") == std::string::npos) {
-    std::cerr << "Expected small-M f16 dispatch to stay on default 64x128 fallback, got "
-              << zcutlass::selected_kernel_name(desc) << std::endl;
-    std::exit(1);
-  }
+  zcutlass::GemmDesc desc{8,
+                          256,
+                          256,
+                          256,
+                          256,
+                          256,
+                          256,
+                          zcutlass::DType::F16,
+                          zcutlass::DType::F16,
+                          zcutlass::DType::F16,
+                          zcutlass::DType::F16,
+                          1.0f,
+                          0.0f,
+                          nullptr,
+                          nullptr};
+  expect_kernel_contains("small-M f16 dispatch", desc, "64x128x16");
 
   desc.m = 64;
-  if (std::string(zcutlass::selected_kernel_name(desc)).find("64x128x16") == std::string::npos) {
-    std::cerr << "Expected M=64 dispatch to select 64x128 kernel, got "
-              << zcutlass::selected_kernel_name(desc) << std::endl;
-    std::exit(1);
-  }
+  expect_kernel_contains("M=64 f16 dispatch", desc, "64x128x16_aligned");
+
+  desc.alpha = 0.5f;
+  expect_kernel_contains("alpha f16 dispatch", desc, "64x128x16");
+  expect_kernel_not_contains("alpha f16 dispatch", desc, "aligned");
+
+  desc.alpha = 1.0f;
+  desc.lda = 260;
+  expect_kernel_contains("padded lda f16 dispatch", desc, "64x128x16");
+  expect_kernel_not_contains("padded lda f16 dispatch", desc, "aligned");
+
+  desc.lda = 256;
+  desc.n = 64;
+  desc.ldb = 64;
+  desc.ldc = 64;
+  desc.ldd = 64;
+  expect_kernel_contains("n=64 f16 dispatch", desc, "64x64x16");
+
+  desc.a_type = zcutlass::DType::BF16;
+  desc.b_type = zcutlass::DType::BF16;
+  desc.c_type = zcutlass::DType::BF16;
+  desc.d_type = zcutlass::DType::BF16;
+  expect_kernel_contains("n=64 bf16 dispatch", desc, "bf16_64x64x16");
 
   std::cout << "[pass] dispatch checks" << std::endl;
 }
@@ -390,15 +563,21 @@ int main() {
 
   run_invalid_argument_tests();
   run_dispatch_tests();
+  run_zero_size_tests<half>();
+  run_zero_size_tests<__nv_bfloat16>();
 
   run_case<half>("f16 tiny padded bias", handle, 15, 17, 19, 1.0f, 0.25f, true, true);
   run_case<half>("f16 16x16", handle, 16, 16, 16, 1.0f, 0.0f, false, false);
   run_case<half>("f16 rectangular", handle, 65, 129, 31, 0.75f, 0.5f, true, true);
+  run_case<half>("f16 ragged alpha no-bias padded A/D", handle, 31, 63, 17, -0.5f, 0.0f, false, 2, 0, 0, 9);
+  run_case<half>("f16 ragged beta no-bias", handle, 47, 64, 33, 0.5f, -0.25f, false, false);
   run_case<half>("f16 llm-smoke", handle, 8, 256, 256, 1.0f, 0.0f, false, false);
 
   run_case<__nv_bfloat16>("bf16 tiny padded bias", handle, 13, 19, 23, 1.0f, 0.25f, true, true);
   run_case<__nv_bfloat16>("bf16 16x16", handle, 16, 16, 16, 1.0f, 0.0f, false, false);
   run_case<__nv_bfloat16>("bf16 rectangular", handle, 67, 127, 29, 0.75f, 0.5f, true, true);
+  run_case<__nv_bfloat16>("bf16 ragged alpha no-bias padded B/C/D", handle, 29, 61, 15, -0.75f, 0.0f, false, 0, 4, 6, 10);
+  run_case<__nv_bfloat16>("bf16 ragged beta no-bias", handle, 45, 64, 31, 0.5f, -0.25f, false, false);
   run_case<__nv_bfloat16>("bf16 llm-smoke", handle, 8, 256, 256, 1.0f, 0.0f, false, false);
 
   CHECK_CUBLAS(cublasDestroy(handle));

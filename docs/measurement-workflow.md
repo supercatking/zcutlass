@@ -46,11 +46,64 @@ python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16
 python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass-dir /path/to/cutlass
 ```
 
+For schema-v1 JSONL that can feed the visualization tool directly:
+
+```bash
+python3 tools/compare_cutlass.py \
+  --providers zcutlass,cutlass \
+  --shape 64x1024x1024 \
+  --dtype both \
+  --warmup 3 \
+  --iterations 10 \
+  --cutlass-profiler /home/zyz/cutlass-official/build-profiler/tools/profiler/cutlass_profiler \
+  --output build/reports/compare_cutlass.jsonl \
+  --summary
+
+python3 tools/visualize_gemm_comparison.py \
+  --zcutlass-jsonl build/reports/compare_cutlass.jsonl \
+  --cutlass-jsonl build/reports/compare_cutlass.jsonl \
+  --output build/reports/compare_cutlass.html
+```
+
+`tools/profile_gemm.py` exports one Nsight Compute report and, by default,
+imports the raw CLI CSV back into small JSON and Markdown summaries:
+
+```bash
+python3 tools/profile_gemm.py \
+  --m 256 --n 4096 --k 4096 --dtype f16 \
+  --warmup 3 --iterations 5 \
+  --output-dir build/profiles
+```
+
+The default sections cover SpeedOfLight, occupancy, launch resources, memory
+workload, scheduler, and warp-state signals. Outputs are named by shape, for
+example `build/profiles/gemm_m256_n4096_k4096_f16.ncu-rep`,
+`build/profiles/gemm_m256_n4096_k4096_f16.csv`,
+`build/profiles/gemm_m256_n4096_k4096_f16.summary.json`, and
+`build/profiles/gemm_m256_n4096_k4096_f16.summary.md`.
+
+Useful variants:
+
+```bash
+# Collect only the report.
+python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16 --no-import
+
+# Use a wider Nsight section set.
+python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16 --set full
+
+# Re-summarize an already exported raw CSV.
+python3 tools/ncu_gemm_summary.py build/profiles/gemm_m256_n4096_k4096_f16.csv \
+  --m 256 --n 4096 --k 4096 --dtype f16 \
+  --summary-json build/profiles/gemm_m256_n4096_k4096_f16.summary.json \
+  --summary-md build/profiles/gemm_m256_n4096_k4096_f16.summary.md
+```
+
 Named suites currently include `single`, `correctness`, `smoke`, `llm`,
 `llm-decode`, `llm-prefill`, `square`, and `ragged`.
 
 Nsight Compute may fail with `ERR_NVGPUCTRPERM` until NVIDIA GPU performance
-counter permissions are enabled on the host/driver. Benchmark timing still works
+counter permissions are enabled on the host/driver. `tools/profile_gemm.py`
+detects this failure and prints a focused hint. Benchmark timing still works
 without those counters; full stall and throughput analysis needs the permission.
 
 ## Visual Report
