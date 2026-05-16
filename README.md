@@ -1,0 +1,53 @@
+# zcutlass
+
+zcutlass is a clean-room CUDA GEMM library aimed first at NVIDIA GeForce RTX 50
+series GPUs (`sm_120`). The v1 surface is deliberately small: row-major dense
+FP16/BF16 GEMM with FP32 accumulation and an optional N-broadcast bias.
+
+The project studies public CUTLASS design ideas and uses CUTLASS/cuBLAS only as
+external baselines. CUTLASS source is not vendored into this repository.
+
+## Build
+
+```bash
+cd /home/zyz/zcutlass
+cmake -S . -B build -G Ninja -DCMAKE_CUDA_ARCHITECTURES=120
+cmake --build build
+```
+
+## Test
+
+```bash
+ctest --test-dir build --output-on-failure
+compute-sanitizer ./build/zcutlass_tests
+```
+
+## Benchmark
+
+```bash
+./build/zcutlass_bench --suite smoke --dtype f16
+./build/zcutlass_bench --m 256 --n 4096 --k 4096 --dtype bf16 --json
+python3 tools/tune_gemm.py --suite smoke --dtype both --output build/tuning_results.json
+python3 tools/profile_gemm.py --m 256 --n 4096 --k 4096 --dtype f16
+python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass-dir /path/to/cutlass
+```
+
+The benchmark compares zcutlass against cuBLAS with CUDA events and reports
+median latency plus TFLOP/s. The `llm` suite covers common hidden sizes
+`1024..8192` and token/batch sizes `1..1024`; it can allocate large matrices, so
+start with `smoke` while iterating. CUTLASS comparison is intentionally routed
+through an external `cutlass_profiler`; no CUTLASS source is copied into this
+repository.
+
+## Public API
+
+```cpp
+#include <zcutlass/gemm.hpp>
+
+zcutlass::GemmDesc desc{/* m/n/k/ld..., dtype fields, alpha, beta, bias, stream */};
+zcutlass::Status status = zcutlass::gemm(desc, A, B, C, D);
+```
+
+v1 supports only matching input/output dtypes: all FP16 or all BF16. Mixed dtype,
+non-row-major layouts, grouped GEMM, sparse GEMM, FP8/FP4, and attention kernels
+are intentionally out of scope for the first milestone.
