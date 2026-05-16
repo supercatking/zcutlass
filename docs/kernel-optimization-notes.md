@@ -26,19 +26,18 @@ are placeholders for a future dedicated small-M mainloop, not the default path.
 
 ## Known Gap
 
-The baseline uses synchronous WMMA, scalar global-to-shared copies, and mostly a
-generic epilogue. The aligned operation variants currently provide a separate
-dispatch point for dense `alpha=1,beta=0,bias=null` problems; their implementation
-still shares the WMMA kernel body, so they are a staging point for future fast
-path work rather than a peak kernel.
+The baseline uses synchronous WMMA, scalar global-to-shared copies, and a generic
+fallback epilogue. The aligned operation variants compile a `FastPath=true`
+kernel for dense `alpha=1,beta=0,bias=null` problems. That path removes boundary
+predicates and beta/bias work while preserving the fallback kernel for ragged
+shapes.
 
 ## Next Optimization Order
 
-1. Add aligned no-bias fast paths for dense multiples of tile sizes.
-2. Double-buffer the K loop to reduce barrier and memory dependency stalls.
-3. Replace WMMA with explicit MMA/register epilogue once the profiler makes the
+1. Double-buffer the K loop to reduce barrier and memory dependency stalls.
+2. Replace WMMA with explicit MMA/register epilogue once the profiler makes the
    current bottleneck clear.
-4. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
+3. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
    baseline has a stable measurement story.
 
 ## Profiling Command

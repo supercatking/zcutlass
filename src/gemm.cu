@@ -54,7 +54,7 @@ __device__ float to_float<__nv_bfloat16>(__nv_bfloat16 value) {
   return __bfloat162float(value);
 }
 
-template <typename T, int BlockM, int BlockN>
+template <typename T, int BlockM, int BlockN, bool FastPath>
 __global__ void wmma_gemm_kernel(GemmDesc desc,
                                  const T* __restrict__ A,
                                  const T* __restrict__ B,
@@ -120,7 +120,11 @@ __global__ void wmma_gemm_kernel(GemmDesc desc,
       const int col = idx % kWmmaK;
       const int64_t gm = block_m + row;
       const int64_t gk = k0 + col;
-      a_tile[idx] = (gm < desc.m && gk < desc.k) ? A[gm * desc.lda + gk] : zero;
+      if constexpr (FastPath) {
+        a_tile[idx] = A[gm * desc.lda + gk];
+      } else {
+        a_tile[idx] = (gm < desc.m && gk < desc.k) ? A[gm * desc.lda + gk] : zero;
+      }
     }
 
     for (int idx = tid; idx < kWmmaK * BlockN; idx += blockDim.x) {
@@ -128,7 +132,11 @@ __global__ void wmma_gemm_kernel(GemmDesc desc,
       const int col = idx % BlockN;
       const int64_t gk = k0 + row;
       const int64_t gn = block_n + col;
-      b_tile[idx] = (gk < desc.k && gn < desc.n) ? B[gk * desc.ldb + gn] : zero;
+      if constexpr (FastPath) {
+        b_tile[idx] = B[gk * desc.ldb + gn];
+      } else {
+        b_tile[idx] = (gk < desc.k && gn < desc.n) ? B[gk * desc.ldb + gn] : zero;
+      }
     }
 
     __syncthreads();
@@ -177,16 +185,20 @@ __global__ void wmma_gemm_kernel(GemmDesc desc,
       accum = c11_smem;
     }
 
-    if (gm < desc.m && gn < desc.n) {
-      float value = desc.alpha * accum[local];
-      if (desc.beta != 0.0f && C != nullptr) {
-        value += desc.beta * to_float<T>(C[gm * desc.ldc + gn]);
+    if constexpr (FastPath) {
+      D[gm * desc.ldd + gn] = from_float<T>(accum[local]);
+    } else {
+      if (gm < desc.m && gn < desc.n) {
+        float value = desc.alpha * accum[local];
+        if (desc.beta != 0.0f && C != nullptr) {
+          value += desc.beta * to_float<T>(C[gm * desc.ldc + gn]);
+        }
+        if (desc.bias != nullptr) {
+          const T* bias = static_cast<const T*>(desc.bias);
+          value += to_float<T>(bias[gn]);
+        }
+        D[gm * desc.ldd + gn] = from_float<T>(value);
       }
-      if (desc.bias != nullptr) {
-        const T* bias = static_cast<const T*>(desc.bias);
-        value += to_float<T>(bias[gn]);
-      }
-      D[gm * desc.ldd + gn] = from_float<T>(value);
     }
   }
 }
@@ -230,7 +242,7 @@ Status validate_desc(const GemmDesc& desc,
   return Status::Success;
 }
 
-template <typename T, int BlockM, int BlockN>
+template <typename T, int BlockM, int BlockN, bool FastPath = false>
 Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const void* C, void* D) {
   constexpr int kWarpsPerBlock = (BlockM / kWarpTileM) * (BlockN / kWarpTileN);
   constexpr int kThreads = kWarpsPerBlock * kWarpSize;
@@ -241,7 +253,7 @@ Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const voi
       (BlockM * kWmmaK + kWmmaK * BlockN) * sizeof(T) +
       kWarpsPerBlock * kTileElementsPerWarp * sizeof(float);
 
-  auto kernel = wmma_gemm_kernel<T, BlockM, BlockN>;
+  auto kernel = wmma_gemm_kernel<T, BlockM, BlockN, FastPath>;
   const cudaError_t attr_status =
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
                            static_cast<int>(shared_bytes));
@@ -339,8 +351,8 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                   args.B.layout,
                   args.C.layout,
                   args.D.layout};
-    return launch_wmma<T, BlockM, BlockN>(desc, args.A.data, args.B.data, args.C.data,
-                                          args.D.data);
+    return launch_wmma<T, BlockM, BlockN, AlignedNoBetaBias>(
+        desc, args.A.data, args.B.data, args.C.data, args.D.data);
   }
 
  private:
