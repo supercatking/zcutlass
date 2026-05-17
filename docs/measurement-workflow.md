@@ -190,6 +190,27 @@ python3 tools/benchmark_torch_linear_overlay.py \
   --summary
 ```
 
+To model one GEMM-heavy decoder layer before wiring a real serving engine, run
+the synthetic LLM layer harness. It measures QKV, output projection, MLP
+up/gate, and MLP down Linear callsites, then appends aggregate layer records:
+
+```bash
+python3 tools/benchmark_torch_llm_overlay.py \
+  --suite smoke \
+  --dtype f16 \
+  --require-extension \
+  --output build/reports/torch_llm_layer_overlay_smoke.jsonl \
+  --summary
+
+python3 tools/benchmark_torch_llm_overlay.py \
+  --suite smoke \
+  --dtype f16 \
+  --require-extension \
+  --allow-family prefill \
+  --output build/reports/torch_llm_layer_overlay_prefill_promoted.jsonl \
+  --summary
+```
+
 ## Record
 
 Capture enough context to make a result repeatable:

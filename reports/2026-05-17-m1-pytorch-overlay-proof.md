@@ -20,6 +20,8 @@ fallback-capable at the Python wrapper layer.
 - `tools/benchmark_torch_linear_overlay.py` Linear-callsite benchmark with
   stock `[N, K]` weight semantics and zcutlass `[K, N]` pre-transposed
   fast-path weights.
+- `tools/benchmark_torch_llm_overlay.py` synthetic decoder-layer benchmark for
+  QKV, output projection, MLP up/gate, and MLP down Linear callsites.
 
 ## Build Environment
 
@@ -85,11 +87,15 @@ Linear-callsite smoke results were recorded in:
 
 - `reports/2026-05-17-m1-torch-linear-overlay-smoke-f16.jsonl`
 - `reports/2026-05-17-m1-torch-linear-overlay-prefill-promoted-f16.jsonl`
+- `reports/2026-05-17-m1-torch-llm-layer-overlay-smoke-f16.jsonl`
+- `reports/2026-05-17-m1-torch-llm-layer-overlay-prefill-promoted-f16.jsonl`
 
 The policy-gated smoke run correctly falls back for off-bucket and unpromoted
 families. The promoted prefill smoke case reaches the zcutlass path and passes
 correctness, but it is still slower than stock PyTorch in this sample; it is an
-integration proof, not a promoted product win.
+integration proof, not a promoted product win. The synthetic decoder-layer
+harness records both per-module and aggregate layer results, which is the next
+measurement shape needed before SGLang/vLLM integration.
 
 ## Next Steps
 
