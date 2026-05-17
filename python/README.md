@@ -1,0 +1,53 @@
+# zcutlass PyTorch Overlay
+
+This package is the M1 proof path for using zcutlass as an explicit PyTorch
+GEMM overlay. It is not a global PyTorch, cuBLAS, or CUTLASS replacement.
+Callsites opt in, unsupported inputs fall back in Python, and experiments record
+hit/miss counts.
+
+## Install
+
+From the repository root:
+
+```bash
+cd /home/zyz/zcutlass
+python3 -m pip install -e ./python
+```
+
+The extension builds the current zcutlass sources into `zcutlass_torch._C`.
+PyTorch with CUDA support is required for the compiled extension.
+
+## Use
+
+```python
+import torch
+from zcutlass_torch import ZCutlassGemmOverlay
+
+overlay = ZCutlassGemmOverlay()
+A = torch.randn((128, 4096), device="cuda", dtype=torch.float16)
+B = torch.randn((4096, 4096), device="cuda", dtype=torch.float16)
+D = overlay.gemm(A, B)
+print(overlay.stats.hits, overlay.stats.fallback_reasons)
+```
+
+For Linear layers, PyTorch stores weight as `[out_features, in_features]`, while
+zcutlass v1 expects row-major GEMM `B` as `[K, N]`. The zcutlass fast path
+therefore requires pre-transposed contiguous weight:
+
+```python
+weight_k_n = module.weight.detach().t().contiguous()
+out = overlay.linear(x, weight_k_n, module.bias, weight_is_transposed=True)
+```
+
+Without `weight_is_transposed=True`, the overlay preserves stock PyTorch Linear
+semantics and records a `weight_not_pretransposed` fallback.
+
+## Check
+
+```bash
+python3 tools/check_torch_overlay.py
+python3 tools/check_torch_overlay.py --require-extension
+```
+
+The default check skips cleanly when PyTorch is not installed. Use
+`--require-extension` in an environment where the extension should be built.

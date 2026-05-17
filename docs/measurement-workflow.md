@@ -126,6 +126,27 @@ python3 tools/visualize_gemm_comparison.py \
   --output build/gemm_comparison.html
 ```
 
+## PyTorch Overlay Check
+
+The M1 overlay proof lives under `python/`. It is opt-in and must never hook
+PyTorch or cuBLAS globally.
+
+```bash
+cd /home/zyz/zcutlass
+python3 -m pip install -e ./python
+python3 tools/check_torch_overlay.py --require-extension
+```
+
+In environments without PyTorch, the default check skips cleanly:
+
+```bash
+python3 tools/check_torch_overlay.py
+```
+
+Record overlay experiments with the same care as kernel benchmarks: model,
+callsite, dtype, shape, hit/miss counts, fallback reasons, and PyTorch stock
+latency for the same callsite.
+
 ## Record
 
 Capture enough context to make a result repeatable:

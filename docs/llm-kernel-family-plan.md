@@ -171,9 +171,14 @@ M1: PyTorch Overlay Proof.
 
 - Provide a documented route for `torch.ops.zcutlass.gemm` or `zcutlass_linear`
   that only replaces explicit Linear/GEMM callsites selected by the experiment.
+- Initial implementation: `python/zcutlass_torch` provides an opt-in
+  `ZCutlassGemmOverlay`, a `zcutlass_torch::gemm` CUDA custom op, and
+  hit/miss/fallback-reason counters.
 - Fallback to `torch.nn.functional.linear` or the original PyTorch matmul when
   dtype, layout, shape, alignment, correctness mode, or predicted performance is
   not acceptable.
+- Current limitation: zcutlass v1 only supports row-major B as `[K, N]`, so
+  Linear fast-path experiments must pass pre-transposed contiguous weights.
 - Acceptance: one offline model path passes numerical correctness and records
   selected GEMM latency plus zcutlass hit/miss counts.
 
