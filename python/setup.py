@@ -37,5 +37,10 @@ setup(
     packages=find_packages(),
     ext_modules=ext_modules,
     cmdclass=cmdclass,
+    entry_points={
+        "vllm.general_plugins": [
+            "zcutlass_overlay = zcutlass_vllm.plugin:register",
+        ],
+    },
     python_requires=">=3.10",
 )

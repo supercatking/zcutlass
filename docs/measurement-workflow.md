@@ -239,6 +239,18 @@ python3 tools/benchmark_torch_module_overlay.py \
 The materialized variant records whether non-contiguous view inputs were copied
 before overlay routing. Treat that copy as part of the overlay cost.
 
+For vLLM discovery, first verify that the zcutlass package is visible as a vLLM
+general plugin:
+
+```bash
+python3 tools/check_vllm_plugin.py
+python3 tools/check_vllm_plugin.py --require-entry-point
+```
+
+This check does not claim vLLM end-to-end acceleration. It only verifies the
+plugin discovery and adapter import layer needed before a custom vLLM model or
+worker path routes selected Linear callsites through zcutlass.
+
 ## Record
 
 Capture enough context to make a result repeatable:

@@ -25,6 +25,7 @@ external baselines. CUTLASS source is not vendored into this repository.
 - [Agent coordination](docs/agent-coordination.md)
 - [2026-05-17 v1.5 LLM GEMM goal lock](reports/2026-05-17-v15-llm-goal-lock.md)
 - [2026-05-17 M1 PyTorch overlay proof](reports/2026-05-17-m1-pytorch-overlay-proof.md)
+- [2026-05-17 M3 vLLM plugin proof](reports/2026-05-17-m3-vllm-plugin-proof.md)
 - [2026-05-16 RTX 5080 CUTLASS comparison](reports/2026-05-16-sm120-gemm-vs-cutlass.md)
 - [2026-05-16 Batch 1 evidence chain](reports/2026-05-16-batch1-evidence-chain.md)
 

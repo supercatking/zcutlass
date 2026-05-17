@@ -93,3 +93,18 @@ weights; only the Linear execution route changes.
 `--materialize-overlay-inputs` makes non-contiguous view inputs explicit in the
 measurement, which is important because zcutlass v1 only accepts contiguous
 row-major tensors.
+
+## vLLM Plugin Check
+
+The package exposes a `vllm.general_plugins` entry point named
+`zcutlass_overlay`. Loading this plugin does not patch vLLM globally; it proves
+that a vLLM process can discover zcutlass and then opt in through the adapter.
+
+```bash
+python3 tools/check_vllm_plugin.py
+python3 tools/check_vllm_plugin.py --require-entry-point
+```
+
+The vLLM-facing adapter is `zcutlass_vllm.ZCutlassVllmLinearAdapter`. It routes
+explicit Linear callsites through `ZCutlassGemmOverlay` and records hit/miss and
+fallback reasons for the serving proof.
