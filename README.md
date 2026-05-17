@@ -4,10 +4,12 @@ zcutlass is a clean-room CUDA GEMM library aimed first at NVIDIA GeForce RTX 50
 series GPUs (`sm_120`). The v1 surface is deliberately small: row-major dense
 FP16/BF16 GEMM with FP32 accumulation and an optional N-broadcast bias.
 
-The v1.5 goal is a dedicated LLM GEMM library optimized for RTX 5080/SM120
-serving and benchmarking shapes. Arbitrary row-major FP16/BF16 GEMM remains
-supported for correctness coverage and fallback dispatch, but it is not the
-optimized target for v1.5.
+The v1.5 goal is a verifiable LLM inference GEMM acceleration layer for RTX
+5080/SM120. zcutlass should win selected LLM GEMM buckets through explicit
+framework integration while unsupported or non-profitable paths fall back to the
+original PyTorch/SGLang/vLLM, cuBLAS, or CUTLASS route. Arbitrary row-major
+FP16/BF16 GEMM remains supported for correctness coverage and fallback dispatch,
+but it is not the optimized target for v1.5.
 
 The project studies public CUTLASS design ideas and uses CUTLASS/cuBLAS only as
 external baselines. CUTLASS source is not vendored into this repository.
@@ -60,10 +62,30 @@ start with `smoke` while iterating. CUTLASS comparison is intentionally routed
 through an external `cutlass_profiler`; no CUTLASS source is copied into this
 repository.
 
+Microbenchmarks are necessary but not sufficient for v1.5. Commercial value must
+be proven in an LLM inference stack with fixed model/workload settings and
+end-to-end metrics such as TTFT, TPOT/decode token latency, tokens/s, p95/p99,
+zcutlass hit rate, fallback reason histogram, and numerical correctness.
+
 Kernel growth for v1.5 must follow CUTLASS-style tile families and
 shape-bucket dispatch. Do not add many full-shape-specific kernels for individual
 LLM dimensions; add reusable tile/pipeline/epilogue families and route nearby
 problem shapes into buckets that can be measured and maintained.
+
+## v1.5 Product Validation Path
+
+1. PyTorch overlay proof: expose a `torch.ops.zcutlass.gemm` or
+   `zcutlass_linear` path for explicitly selected Linear/GEMM callsites, with
+   fallback to the original PyTorch operation.
+2. SGLang serving proof: integrate zcutlass as a GEMM overlay only, leaving
+   attention, KV cache, scheduling, and sampling on the stock path.
+3. vLLM OOT CustomOp proof: validate the same overlay model through a vLLM
+   out-of-tree custom op rather than global cuBLAS interception.
+
+v1.5 succeeds only when at least one real inference engine shows a stable TTFT or
+TPOT improvement without correctness failures or p95/p99 regressions. External
+CUTLASS/cuBLAS results explain kernel-level behavior; they do not replace
+serving-level proof.
 
 ## Roadmap Docs
 

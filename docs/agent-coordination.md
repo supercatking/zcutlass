@@ -5,13 +5,17 @@ analysis, but serializes GPU measurements on the single RTX 5080.
 
 ## v1.5 Goal Lock
 
-v1.5 optimizes LLM GEMM on RTX 5080/SM120. Arbitrary row-major FP16/BF16 GEMM
-remains supported for correctness and fallback dispatch, but it is not the v1.5
-optimized target.
+v1.5 optimizes LLM GEMM on RTX 5080/SM120 as a verifiable inference-stack
+overlay. Arbitrary row-major FP16/BF16 GEMM remains supported for correctness
+and fallback dispatch, but it is not the v1.5 optimized target.
 
 Agents must not expand performance work by adding many full-shape-specific
 kernels. Use CUTLASS-style tile families and shape-bucket dispatch so optimized
 coverage stays measurable, reusable, and reviewable.
+
+zcutlass should run before the stock framework path only for selected optimized
+buckets. Unsupported, unimplemented, or non-profitable work falls back to the
+original framework, cuBLAS, or CUTLASS path with observable reason codes.
 
 ## Roles
 
@@ -23,6 +27,10 @@ coverage stays measurable, reusable, and reviewable.
   records.
 - Correctness owns test coverage and sanitizer evidence.
 - Kernel agents own one performance experiment at a time in `src/gemm.cu`.
+- Framework Integration owns PyTorch/SGLang/vLLM adapter plans, explicit
+  callsite routing, fallback policy, and hit/miss instrumentation.
+- Serving Validation owns end-to-end TTFT, TPOT/decode latency, tokens/s,
+  p50/p95/p99, model/workload definitions, and output correctness evidence.
 
 ## Write Ownership
 
@@ -43,7 +51,8 @@ Run only one GPU-heavy task at a time:
 1. `compute-sanitizer`
 2. `zcutlass_bench`
 3. official CUTLASS profiler
-4. `ncu`
+4. framework serving benchmark
+5. `ncu`
 
 CPU builds, JSON parsing, documentation, and report generation can run in
 parallel. On this host, use up to `-j 24` for zcutlass builds and `-j 16..24`
@@ -59,4 +68,9 @@ Before merging a performance change:
   blocker such as `ERR_NVGPUCTRPERM`.
 - CUTLASS comparisons record the external CUTLASS commit, profiler path, kernel
   name, and any layout caveat.
+- Framework integration changes record the model, engine, batch size, prompt
+  length, output length, TTFT, TPOT, tokens/s, p50/p95/p99, zcutlass hit rate,
+  and fallback reason histogram.
+- Any serving benchmark claims compare stock engine against engine plus zcutlass
+  overlay under the same model, driver, CUDA, sampling, and workload settings.
 - Windows mirror sync completes.

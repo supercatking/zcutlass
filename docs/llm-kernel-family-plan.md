@@ -28,6 +28,10 @@ zcutlass result, and the best available external baseline. Record:
 - WarpStateStats long scoreboard, barrier, and math pipe throttling stalls.
 - Occupancy, registers per thread, shared memory per block, and waves per SM.
 - MemoryWorkloadAnalysis global/shared load efficiency and L2 behavior.
+- Framework hit/miss path when the experiment is intended for product
+  promotion: model, module, batch size, prompt length, output length, hit rate,
+  fallback reason histogram, TTFT, TPOT, tokens/s, p95/p99, and output
+  correctness.
 
 The first expected win is lower long scoreboard plus higher Tensor Core issue
 rate. If latency improves while Tensor throughput stays low, inspect whether the
@@ -41,6 +45,10 @@ Typical shape pressure is small `M`, large `N/K`, and high sensitivity to
 per-block overhead. Existing `32x*` registrations are placeholders because the
 current reused WMMA body was slower in spot checks; do not promote them until
 the mainloop is actually different.
+
+Model mapping: batch/token decode Linear layers, especially projection and MLP
+GEMMs whose effective `M` is the active token count. End-to-end value should
+show up in TPOT/decode token latency before TTFT.
 
 First experiment:
 
@@ -66,6 +74,9 @@ Prefill has larger `M` than decode while still matching LLM-like large `N/K`
 matrices. It should be the first family to validate whether a pipelined WMMA
 mainloop is enough before moving to explicit MMA.
 
+Model mapping: prompt/prefill QKV, output projection, and MLP up/down/gate
+Linear layers. End-to-end value should show up in TTFT and prefill throughput.
+
 First experiment:
 
 1. Keep the `64x128x16` family as the primary candidate.
@@ -88,6 +99,9 @@ throughput shapes such as `m=256,n=4096,k=4096`.
 
 These shapes should expose sustained mainloop throughput. They are the best
 place to decide whether the baseline WMMA path has reached its ceiling.
+
+Model mapping: high-concurrency serving, large batch, and throughput-mode
+prefill where the engine can accumulate enough work to saturate GEMM.
 
 First experiment:
 
@@ -115,6 +129,10 @@ bias, and non-aligned dimensions.
 Fallback kernels protect the public API surface. Their job is not to win peak
 throughput; their job is to remain correct and predictable while aligned paths
 take the aggressive optimizations.
+
+Model mapping: unsupported dtype/layout, ragged or padded leading dimensions,
+non-target shapes, beta/bias combinations, or cases where zcutlass predicts it
+will not beat the stock framework path.
 
 First experiment:
 
@@ -146,3 +164,45 @@ This order follows the current profile: fix long scoreboard and Tensor Core
 underutilization in the common mainloop first, then decide whether the next
 experiment should be explicit MMA/register epilogue or a narrower small-M
 decode family.
+
+## Framework Integration Milestones
+
+M1: PyTorch Overlay Proof.
+
+- Provide a documented route for `torch.ops.zcutlass.gemm` or `zcutlass_linear`
+  that only replaces explicit Linear/GEMM callsites selected by the experiment.
+- Fallback to `torch.nn.functional.linear` or the original PyTorch matmul when
+  dtype, layout, shape, alignment, correctness mode, or predicted performance is
+  not acceptable.
+- Acceptance: one offline model path passes numerical correctness and records
+  selected GEMM latency plus zcutlass hit/miss counts.
+
+M2: SGLang Serving Proof.
+
+- Treat SGLang as the first serving engine target.
+- zcutlass is a GEMM overlay only; do not replace attention, KV cache,
+  scheduling, or sampling.
+- Acceptance: stock SGLang vs SGLang plus zcutlass overlay on the same model and
+  workload, recording TTFT, TPOT, tokens/s, p50/p95/p99, hit rate, and fallback
+  reasons.
+
+M3: vLLM OOT CustomOp Proof.
+
+- Use vLLM out-of-tree CustomOp integration instead of `LD_PRELOAD` or global
+  cuBLAS interception.
+- Acceptance: stock vLLM vs vLLM plus zcutlass overlay on decode-heavy,
+  prefill-heavy, and mixed serving workloads.
+
+M4: Commercial Value Gate.
+
+- v1.5 product value is established only after at least one real serving engine
+  shows stable TTFT or TPOT improvement, correctness passes, fallback is
+  observable and safe, p95/p99 does not materially regress, and microbenchmark,
+  Nsight, and end-to-end metrics tell the same story.
+
+M5: Post-v1.5 CUTLASS Alignment.
+
+- After the serving proof, expand toward grouped GEMM/MoE, richer epilogue
+  fusion, FP8/FP4/block-scaled inference, more layouts/dtypes, and a fuller
+  profiler/autotune system.
+- These items are not v1.5 success criteria.
