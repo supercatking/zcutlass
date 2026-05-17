@@ -17,6 +17,9 @@ fallback-capable at the Python wrapper layer.
 - `tools/check_torch_overlay.py` skip-friendly extension smoke check.
 - `tools/benchmark_torch_overlay.py` stock PyTorch vs zcutlass overlay JSONL
   benchmark.
+- `tools/benchmark_torch_linear_overlay.py` Linear-callsite benchmark with
+  stock `[N, K]` weight semantics and zcutlass `[K, N]` pre-transposed
+  fast-path weights.
 
 ## Build Environment
 
@@ -78,10 +81,18 @@ with `family_not_promoted`; off-bucket shapes fall back with
 `shape_not_target_bucket`. Kernel debugging can still force the zcutlass path,
 but forced runs are not product-value evidence.
 
+Linear-callsite smoke results were recorded in:
+
+- `reports/2026-05-17-m1-torch-linear-overlay-smoke-f16.jsonl`
+- `reports/2026-05-17-m1-torch-linear-overlay-prefill-promoted-f16.jsonl`
+
+The policy-gated smoke run correctly falls back for off-bucket and unpromoted
+families. The promoted prefill smoke case reaches the zcutlass path and passes
+correctness, but it is still slower than stock PyTorch in this sample; it is an
+integration proof, not a promoted product win.
+
 ## Next Steps
 
-- Add a PyTorch model-level offline Linear replacement harness with explicit
-  pre-transposed weights.
 - Promote a first family only after stock-vs-overlay measurement shows a
   product-relevant win or after a kernel change creates one.
 - Use the same JSONL schema for model callsite records before moving to SGLang

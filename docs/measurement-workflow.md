@@ -177,6 +177,19 @@ Overlay JSONL records include `shape_family`, `route_family`, `kernel_path`,
 `fallback_reason`, `hit_count`, `miss_count`, `hit_rate`,
 `fallback_reasons`, `routing_policy_enabled`, and `promoted_families`.
 
+For a closer Linear-callsite proof, use the pre-transposed-weight harness. Stock
+PyTorch still receives `[N, K]` weights, while zcutlass receives the explicit
+`[K, N]` contiguous fast-path weight:
+
+```bash
+python3 tools/benchmark_torch_linear_overlay.py \
+  --suite smoke \
+  --dtype both \
+  --require-extension \
+  --output build/reports/torch_linear_overlay_smoke.jsonl \
+  --summary
+```
+
 ## Record
 
 Capture enough context to make a result repeatable:
