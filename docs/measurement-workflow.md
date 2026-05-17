@@ -133,7 +133,7 @@ PyTorch or cuBLAS globally.
 
 ```bash
 cd /home/zyz/zcutlass
-python3 -m pip install -e ./python
+python3 -m pip install -e ./python --no-build-isolation
 python3 tools/check_torch_overlay.py --require-extension
 ```
 
@@ -146,6 +146,17 @@ python3 tools/check_torch_overlay.py
 Record overlay experiments with the same care as kernel benchmarks: model,
 callsite, dtype, shape, hit/miss counts, fallback reasons, and PyTorch stock
 latency for the same callsite.
+
+For synthetic stock-vs-overlay measurements:
+
+```bash
+python3 tools/benchmark_torch_overlay.py \
+  --suite smoke \
+  --dtype both \
+  --require-extension \
+  --output build/reports/torch_overlay_smoke.jsonl \
+  --summary
+```
 
 ## Record
 

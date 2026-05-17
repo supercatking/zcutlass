@@ -11,7 +11,7 @@ From the repository root:
 
 ```bash
 cd /home/zyz/zcutlass
-python3 -m pip install -e ./python
+python3 -m pip install -e ./python --no-build-isolation
 ```
 
 The extension builds the current zcutlass sources into `zcutlass_torch._C`.
@@ -51,3 +51,18 @@ python3 tools/check_torch_overlay.py --require-extension
 
 The default check skips cleanly when PyTorch is not installed. Use
 `--require-extension` in an environment where the extension should be built.
+
+## Benchmark
+
+```bash
+python3 tools/benchmark_torch_overlay.py \
+  --suite smoke \
+  --dtype both \
+  --require-extension \
+  --output build/reports/torch_overlay_smoke.jsonl \
+  --summary
+```
+
+This benchmark records stock `torch.matmul` and explicit zcutlass overlay
+measurements as schema-v1 JSONL. It also records hit rate and fallback reasons
+for the overlay path.

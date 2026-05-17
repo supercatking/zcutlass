@@ -25,7 +25,7 @@ def extension_modules():
             "nvcc": ["-std=c++17", "--expt-relaxed-constexpr", "-gencode=arch=compute_120,code=sm_120"],
         },
     )
-    return [ext], {"cmdclass": {"build_ext": BuildExtension}}
+    return [ext], {"build_ext": BuildExtension}
 
 
 ext_modules, cmdclass = extension_modules()
