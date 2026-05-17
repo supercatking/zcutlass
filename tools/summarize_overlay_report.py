@@ -47,9 +47,13 @@ def label_for(record: dict[str, Any]) -> str:
     layer = tags.get("layer") or "-"
     module = tags.get("module") or problem.get("operation")
     dtype = problem.get("dtype")
+    if problem.get("n") is not None and problem.get("k") is not None:
+        return f"{layer}/{module} {dtype} {problem['m']}x{problem['n']}x{problem['k']}"
+    if problem.get("hidden") is not None and problem.get("intermediate") is not None:
+        return f"{layer}/{module} {dtype} m={problem['m']} h={problem['hidden']} i={problem['intermediate']}"
     if problem.get("m") is None:
         return f"{layer}/{module} {dtype}"
-    return f"{layer}/{module} {dtype} {problem['m']}x{problem['n']}x{problem['k']}"
+    return f"{layer}/{module} {dtype} m={problem['m']}"
 
 
 def summarize(path: pathlib.Path) -> list[dict[str, Any]]:

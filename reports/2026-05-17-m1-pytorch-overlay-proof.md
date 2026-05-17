@@ -22,6 +22,9 @@ fallback-capable at the Python wrapper layer.
   fast-path weights.
 - `tools/benchmark_torch_llm_overlay.py` synthetic decoder-layer benchmark for
   QKV, output projection, MLP up/gate, and MLP down Linear callsites.
+- `tools/benchmark_torch_module_overlay.py` mini `torch.nn.Module` decoder block
+  benchmark that shares real `torch.nn.Linear` weights between stock and overlay
+  paths.
 
 ## Build Environment
 
@@ -96,6 +99,20 @@ correctness, but it is still slower than stock PyTorch in this sample; it is an
 integration proof, not a promoted product win. The synthetic decoder-layer
 harness records both per-module and aggregate layer results, which is the next
 measurement shape needed before SGLang/vLLM integration.
+
+Mini `torch.nn.Module` decoder-block results were recorded in:
+
+- `reports/2026-05-17-m1-torch-module-overlay-smoke-f16.jsonl`
+- `reports/2026-05-17-m1-torch-module-overlay-smoke-f16.md`
+- `reports/2026-05-17-m1-torch-module-overlay-prefill-materialized-f16.jsonl`
+- `reports/2026-05-17-m1-torch-module-overlay-prefill-materialized-f16.md`
+
+The default policy-gated module run falls back for off-bucket, unpromoted, and
+non-contiguous view inputs. The `--materialize-overlay-inputs` run shows the
+cost of making view inputs contiguous before overlay routing; when prefill is
+forced into zcutlass, correctness still passes but the current kernel remains
+slower than stock PyTorch. This makes non-contiguous activation handling a real
+framework-integration gate, not an implementation footnote.
 
 ## Next Steps
 

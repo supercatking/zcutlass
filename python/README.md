@@ -66,3 +66,30 @@ python3 tools/benchmark_torch_overlay.py \
 This benchmark records stock `torch.matmul` and explicit zcutlass overlay
 measurements as schema-v1 JSONL. It also records hit rate and fallback reasons
 for the overlay path.
+
+For a closer `torch.nn.Module` proof before wiring a serving engine:
+
+```bash
+python3 tools/benchmark_torch_module_overlay.py \
+  --suite smoke \
+  --dtype both \
+  --require-extension \
+  --output build/reports/torch_module_overlay_smoke.jsonl \
+  --summary
+
+python3 tools/benchmark_torch_module_overlay.py \
+  --suite smoke \
+  --dtype f16 \
+  --require-extension \
+  --allow-family prefill \
+  --materialize-overlay-inputs \
+  --output build/reports/torch_module_overlay_prefill_materialized.jsonl \
+  --summary
+```
+
+The module harness builds a tiny decoder block with QKV, output projection, MLP
+up/gate, and MLP down Linear modules. Stock and overlay paths share the same
+weights; only the Linear execution route changes.
+`--materialize-overlay-inputs` makes non-contiguous view inputs explicit in the
+measurement, which is important because zcutlass v1 only accepts contiguous
+row-major tensors.

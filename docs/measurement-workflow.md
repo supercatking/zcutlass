@@ -215,6 +215,30 @@ python3 tools/summarize_overlay_report.py \
   --markdown build/reports/torch_llm_layer_overlay_prefill_promoted.md
 ```
 
+For the closest M1 proof before SGLang/vLLM integration, use the
+`torch.nn.Module` mini decoder harness:
+
+```bash
+python3 tools/benchmark_torch_module_overlay.py \
+  --suite smoke \
+  --dtype both \
+  --require-extension \
+  --output build/reports/torch_module_overlay_smoke.jsonl \
+  --summary
+
+python3 tools/benchmark_torch_module_overlay.py \
+  --suite smoke \
+  --dtype f16 \
+  --require-extension \
+  --allow-family prefill \
+  --materialize-overlay-inputs \
+  --output build/reports/torch_module_overlay_prefill_materialized.jsonl \
+  --summary
+```
+
+The materialized variant records whether non-contiguous view inputs were copied
+before overlay routing. Treat that copy as part of the overlay cost.
+
 ## Record
 
 Capture enough context to make a result repeatable:
