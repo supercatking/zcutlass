@@ -44,6 +44,44 @@ class OverlayStats:
         return self.hits / self.total if self.total else 0.0
 
 
+@dataclass(frozen=True)
+class RoutingPolicy:
+    """Shape policy for v1.5 explicit overlay experiments.
+
+    The default policy only allows LLM-shaped buckets into zcutlass. This keeps
+    the product proof honest: non-target or currently unvalidated shapes still
+    run correctly through PyTorch fallback and produce fallback telemetry.
+    """
+
+    enabled: bool = True
+    min_n: int = 1024
+    min_k: int = 1024
+    decode_max_m: int = 16
+    prefill_min_m: int = 32
+    prefill_max_m: int = 256
+    large_min_m: int = 512
+    promoted_families: tuple[str, ...] = ()
+
+    def family(self, m: int, n: int, k: int) -> str:
+        if m <= self.decode_max_m and n >= self.min_n and k >= self.min_k:
+            return "decode"
+        if self.prefill_min_m <= m <= self.prefill_max_m and n >= self.min_n and k >= self.min_k:
+            return "prefill"
+        if m >= self.large_min_m and n >= self.min_n and k >= self.min_k:
+            return "large"
+        return "fallback"
+
+    def reject_reason(self, m: int, n: int, k: int) -> Optional[str]:
+        if not self.enabled:
+            return None
+        family = self.family(m, n, k)
+        if family == "fallback":
+            return "shape_not_target_bucket"
+        if family not in self.promoted_families:
+            return "family_not_promoted"
+        return None
+
+
 class ZCutlassGemmOverlay:
     """Explicit PyTorch overlay for zcutlass GEMM proof-of-value experiments.
 
@@ -52,10 +90,21 @@ class ZCutlassGemmOverlay:
     and record a reason for serving-level reports.
     """
 
-    def __init__(self, enable_zcutlass: bool = True) -> None:
+    def __init__(
+        self,
+        enable_zcutlass: bool = True,
+        *,
+        routing_policy: Optional[RoutingPolicy] = None,
+        force_zcutlass: bool = False,
+    ) -> None:
         self.enable_zcutlass = enable_zcutlass
+        self.routing_policy = routing_policy or RoutingPolicy()
+        self.force_zcutlass = force_zcutlass
         self.stats = OverlayStats()
         self._loaded = False
+        self.last_family = "unknown"
+        self.last_kernel_path = "unknown"
+        self.last_fallback_reason: Optional[str] = None
 
     def _ensure_loaded(self) -> bool:
         if not self.enable_zcutlass:
@@ -68,6 +117,8 @@ class ZCutlassGemmOverlay:
     def _fallback(self, reason: str, a, b, c=None, bias=None, alpha: float = 1.0, beta: float = 0.0):
         torch = _torch()
         self.stats.record_miss(reason)
+        self.last_kernel_path = "pytorch_fallback"
+        self.last_fallback_reason = reason
         out = torch.matmul(a, b)
         if alpha != 1.0:
             out = out * alpha
@@ -79,6 +130,11 @@ class ZCutlassGemmOverlay:
 
     def _reject_reason(self, a, b, c=None, bias=None, beta: float = 0.0) -> Optional[str]:
         torch = _torch()
+        self.last_family = "unknown"
+        self.last_kernel_path = "unknown"
+        self.last_fallback_reason = None
+        if not self.enable_zcutlass:
+            return "zcutlass_disabled"
         if not self._ensure_loaded():
             return "extension_unavailable"
         if c is None and beta != 0.0:
@@ -89,6 +145,7 @@ class ZCutlassGemmOverlay:
             return "rank_not_2"
         if a.shape[1] != b.shape[0]:
             return "inner_dimension_mismatch"
+        self.last_family = self.routing_policy.family(int(a.shape[0]), int(b.shape[1]), int(a.shape[1]))
         if not a.is_contiguous() or not b.is_contiguous():
             return "non_contiguous_ab"
         if a.dtype != b.dtype:
@@ -113,6 +170,10 @@ class ZCutlassGemmOverlay:
                 return "bias_dtype_mismatch"
             if not bias.is_contiguous():
                 return "non_contiguous_bias"
+        if not self.force_zcutlass:
+            policy_reason = self.routing_policy.reject_reason(int(a.shape[0]), int(b.shape[1]), int(a.shape[1]))
+            if policy_reason is not None:
+                return policy_reason
         return None
 
     def gemm(self, a, b, c=None, bias=None, alpha: float = 1.0, beta: float = 0.0):
@@ -121,6 +182,8 @@ class ZCutlassGemmOverlay:
             return self._fallback(reason, a, b, c, bias, alpha, beta)
         torch = _torch()
         self.stats.record_hit()
+        self.last_kernel_path = "zcutlass"
+        self.last_fallback_reason = None
         return torch.ops.zcutlass_torch.gemm(a, b, c, bias, float(alpha), float(beta))
 
     def linear(self, x, weight, bias=None, *, weight_is_transposed: bool = False):

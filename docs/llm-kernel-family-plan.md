@@ -174,13 +174,18 @@ M1: PyTorch Overlay Proof.
 - Initial implementation: `python/zcutlass_torch` provides an opt-in
   `ZCutlassGemmOverlay`, a `zcutlass_torch::gemm` CUDA custom op, and
   hit/miss/fallback-reason counters.
+- The overlay is policy-gated by default. LLM-shaped families are classified as
+  decode, prefill, or large, but they do not route to zcutlass until explicitly
+  promoted for an experiment. Off-bucket shapes report `shape_not_target_bucket`;
+  unpromoted target buckets report `family_not_promoted`.
 - Fallback to `torch.nn.functional.linear` or the original PyTorch matmul when
   dtype, layout, shape, alignment, correctness mode, or predicted performance is
   not acceptable.
 - Current limitation: zcutlass v1 only supports row-major B as `[K, N]`, so
   Linear fast-path experiments must pass pre-transposed contiguous weights.
 - Acceptance: one offline model path passes numerical correctness and records
-  selected GEMM latency plus zcutlass hit/miss counts.
+  selected GEMM latency, `kernel_path`, route family, zcutlass hit/miss counts,
+  and fallback reason histogram.
 
 M2: SGLang Serving Proof.
 

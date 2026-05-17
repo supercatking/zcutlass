@@ -103,12 +103,22 @@ def run_shape(torch, overlay_cls, shape: Shape, args: argparse.Namespace) -> lis
     stock = stock_fn()
     stock_ms = cuda_time_ms(torch, stock_fn, args.warmup, args.iterations)
 
-    overlay = overlay_cls(enable_zcutlass=not args.disable_zcutlass)
+    overlay = overlay_cls(
+        enable_zcutlass=not args.disable_zcutlass,
+        routing_policy=args.routing_policy_cls(
+            enabled=not args.disable_routing_policy,
+            promoted_families=tuple(args.allow_family),
+        ),
+        force_zcutlass=args.force_zcutlass,
+    )
 
     def overlay_fn():
         return overlay.gemm(a, b, bias=bias)
 
     actual = overlay_fn()
+    kernel_path = overlay.last_kernel_path
+    route_family = overlay.last_family
+    fallback_reason = overlay.last_fallback_reason
     torch.testing.assert_close(actual, stock, rtol=args.rtol, atol=args.atol)
     overlay_ms = cuda_time_ms(torch, overlay_fn, args.warmup, args.iterations)
 
@@ -158,10 +168,16 @@ def run_shape(torch, overlay_cls, shape: Shape, args: argparse.Namespace) -> lis
             },
             "tags": {
                 **common_tags,
+                "route_family": route_family,
+                "kernel_path": kernel_path,
+                "fallback_reason": fallback_reason,
                 "hit_count": overlay.stats.hits,
                 "miss_count": overlay.stats.misses,
                 "hit_rate": overlay.stats.hit_rate,
                 "fallback_reasons": overlay.stats.fallback_reasons,
+                "force_zcutlass": args.force_zcutlass,
+                "routing_policy_enabled": not args.disable_routing_policy,
+                "promoted_families": args.allow_family,
             },
         },
     ]
@@ -176,6 +192,15 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--bias", action="store_true")
     parser.add_argument("--disable-zcutlass", action="store_true")
+    parser.add_argument("--disable-routing-policy", action="store_true")
+    parser.add_argument("--force-zcutlass", action="store_true")
+    parser.add_argument(
+        "--allow-family",
+        action="append",
+        default=[],
+        choices=("decode", "prefill", "large"),
+        help="Promote a shape family into the zcutlass path for policy-gated runs.",
+    )
     parser.add_argument("--require-extension", action="store_true")
     parser.add_argument("--callsite", default="synthetic_gemm")
     parser.add_argument("--rtol", type=float, default=1e-2)
@@ -190,12 +215,13 @@ def main() -> int:
     except Exception as exc:
         raise SystemExit(f"PyTorch is required for this benchmark: {exc}") from exc
 
-    from zcutlass_torch import ZCutlassGemmOverlay, extension_available
+    from zcutlass_torch import RoutingPolicy, ZCutlassGemmOverlay, extension_available
 
     if not torch.cuda.is_available():
         raise SystemExit("PyTorch CUDA is not available")
     if args.require_extension and not extension_available():
         raise SystemExit("zcutlass_torch extension is not installed")
+    args.routing_policy_cls = RoutingPolicy
 
     dtypes = ["f16", "bf16"] if args.dtype == "both" else [args.dtype]
     shapes = (
@@ -213,8 +239,11 @@ def main() -> int:
             overlay = shape_records[1]["performance"]["median_ms"]
             speedup = stock / overlay if overlay > 0 else 0.0
             hit_rate = shape_records[1]["tags"]["hit_rate"]
+            kernel_path = shape_records[1]["tags"]["kernel_path"]
+            reason = shape_records[1]["tags"]["fallback_reason"] or "-"
             print(f"{shape.label:22s} stock={stock:.4f} ms overlay={overlay:.4f} ms "
-                  f"speedup={speedup:.3f}x hit_rate={hit_rate:.2f}")
+                  f"speedup={speedup:.3f}x hit_rate={hit_rate:.2f} "
+                  f"path={kernel_path} reason={reason}")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w") as f:

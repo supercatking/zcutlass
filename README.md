@@ -78,7 +78,9 @@ problem shapes into buckets that can be measured and maintained.
 1. PyTorch overlay proof: expose a `torch.ops.zcutlass.gemm` or
    `zcutlass_linear` path for explicitly selected Linear/GEMM callsites, with
    fallback to the original PyTorch operation. The first overlay package lives
-   under `python/` and is intentionally opt-in.
+   under `python/` and is intentionally opt-in. Routing is policy-gated:
+   unpromoted or currently non-profitable shapes must fall back with observable
+   hit/miss and fallback-reason counters instead of forcing zcutlass.
 2. SGLang serving proof: integrate zcutlass as a GEMM overlay only, leaving
    attention, KV cache, scheduling, and sampling on the stock path.
 3. vLLM OOT CustomOp proof: validate the same overlay model through a vLLM

@@ -147,6 +147,13 @@ Record overlay experiments with the same care as kernel benchmarks: model,
 callsite, dtype, shape, hit/miss counts, fallback reasons, and PyTorch stock
 latency for the same callsite.
 
+The default PyTorch overlay is policy-gated. It accepts only explicitly
+promoted shape families; target buckets that are not promoted yet fall back with
+`family_not_promoted`, while off-bucket shapes fall back with
+`shape_not_target_bucket`. Use `--allow-family` only when a family has enough
+correctness and performance evidence for the experiment. Use `--force-zcutlass`
+for kernel debugging, not product-value claims.
+
 For synthetic stock-vs-overlay measurements:
 
 ```bash
@@ -156,7 +163,19 @@ python3 tools/benchmark_torch_overlay.py \
   --require-extension \
   --output build/reports/torch_overlay_smoke.jsonl \
   --summary
+
+python3 tools/benchmark_torch_overlay.py \
+  --suite llm-v1.5 \
+  --dtype both \
+  --require-extension \
+  --allow-family prefill \
+  --output build/reports/torch_overlay_prefill_policy.jsonl \
+  --summary
 ```
+
+Overlay JSONL records include `shape_family`, `route_family`, `kernel_path`,
+`fallback_reason`, `hit_count`, `miss_count`, `hit_rate`,
+`fallback_reasons`, `routing_policy_enabled`, and `promoted_families`.
 
 ## Record
 

@@ -13,6 +13,7 @@ fallback-capable at the Python wrapper layer.
 - `python/zcutlass_torch` package.
 - `torch.ops.zcutlass_torch.gemm` CUDA custom op.
 - `ZCutlassGemmOverlay` Python wrapper with hit/miss and fallback reason stats.
+- `RoutingPolicy` gate for observable fallback before a family is promoted.
 - `tools/check_torch_overlay.py` skip-friendly extension smoke check.
 - `tools/benchmark_torch_overlay.py` stock PyTorch vs zcutlass overlay JSONL
   benchmark.
@@ -47,10 +48,10 @@ python3 tools/benchmark_torch_overlay.py --suite smoke --dtype both \
 
 ## Results
 
-Extension smoke check:
+Updated extension smoke check:
 
 ```text
-PASS: hits=1 misses=0
+PASS: forced_hits=1 policy_misses=1 policy_reasons={'shape_not_target_bucket': 1}
 ```
 
 Synthetic smoke benchmark:
@@ -70,11 +71,18 @@ cases. That is acceptable for M1 because the milestone is callsite integration,
 fallback observability, and correctness. Performance promotion still requires
 the v1.5 kernel family work.
 
+The overlay now defaults to policy-gated routing. Target LLM families are
+classified for measurement, but no family is sent to zcutlass unless it is
+explicitly promoted with benchmark evidence. Unpromoted target buckets fall back
+with `family_not_promoted`; off-bucket shapes fall back with
+`shape_not_target_bucket`. Kernel debugging can still force the zcutlass path,
+but forced runs are not product-value evidence.
+
 ## Next Steps
 
 - Add a PyTorch model-level offline Linear replacement harness with explicit
   pre-transposed weights.
-- Add routing policy so the overlay can reject shapes where stock PyTorch is
-  known faster.
+- Promote a first family only after stock-vs-overlay measurement shows a
+  product-relevant win or after a kernel change creates one.
 - Use the same JSONL schema for model callsite records before moving to SGLang
   serving proof.

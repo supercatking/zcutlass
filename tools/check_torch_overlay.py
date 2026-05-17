@@ -38,14 +38,25 @@ def main() -> int:
         print("SKIP: zcutlass_torch extension is not installed")
         return 1 if args.require_extension else 0
 
-    overlay = ZCutlassGemmOverlay()
+    overlay = ZCutlassGemmOverlay(force_zcutlass=True)
     a = torch.randn((8, 64), device="cuda", dtype=torch.float16)
     b = torch.randn((64, 128), device="cuda", dtype=torch.float16)
     bias = torch.randn((128,), device="cuda", dtype=torch.float16)
     actual = overlay.gemm(a, b, bias=bias)
     expected = torch.matmul(a, b) + bias
     torch.testing.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
-    print(f"PASS: hits={overlay.stats.hits} misses={overlay.stats.misses}")
+
+    policy_overlay = ZCutlassGemmOverlay()
+    fallback = policy_overlay.gemm(a, b, bias=bias)
+    torch.testing.assert_close(fallback, expected, rtol=1e-2, atol=1e-2)
+    assert policy_overlay.stats.fallback_reasons.get("shape_not_target_bucket") == 1
+
+    print(
+        "PASS: "
+        f"forced_hits={overlay.stats.hits} "
+        f"policy_misses={policy_overlay.stats.misses} "
+        f"policy_reasons={policy_overlay.stats.fallback_reasons}"
+    )
     return 0
 
 
