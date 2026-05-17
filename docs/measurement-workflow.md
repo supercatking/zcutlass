@@ -209,6 +209,10 @@ python3 tools/benchmark_torch_llm_overlay.py \
   --allow-family prefill \
   --output build/reports/torch_llm_layer_overlay_prefill_promoted.jsonl \
   --summary
+
+python3 tools/summarize_overlay_report.py \
+  build/reports/torch_llm_layer_overlay_prefill_promoted.jsonl \
+  --markdown build/reports/torch_llm_layer_overlay_prefill_promoted.md
 ```
 
 ## Record
