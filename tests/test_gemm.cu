@@ -558,12 +558,33 @@ void run_dispatch_tests() {
   expect_path("LLM decode canonical dispatch", desc, "fallback");
 
   desc.m = 128;
-  expect_kernel_contains("LLM prefill canonical dispatch", desc, "64x128x32_aligned_prefill");
+  expect_kernel_contains("LLM prefill canonical dispatch", desc,
+                         "64x128x64_aligned_prefill_n_le_k");
   expect_kernel_not_contains("LLM prefill canonical dispatch", desc, "experimental");
   expect_family("LLM prefill canonical dispatch", desc, "prefill");
   expect_path("LLM prefill canonical dispatch", desc, "fast");
 
+  desc.n = 16384;
+  desc.k = 4096;
+  desc.lda = 4096;
+  desc.ldb = 16384;
+  desc.ldc = 16384;
+  desc.ldd = 16384;
+  expect_kernel_contains("LLM prefill N>K dispatch", desc, "64x128x32_aligned_prefill");
+  expect_kernel_not_contains("LLM prefill N>K dispatch", desc, "64x128x64");
+
+  desc.n = 4096;
+  desc.k = 16384;
+  desc.lda = 16384;
+  desc.ldb = 4096;
+  desc.ldc = 4096;
+  desc.ldd = 4096;
+  expect_kernel_contains("LLM prefill N<=K dispatch", desc,
+                         "64x128x64_aligned_prefill_n_le_k");
+
   desc.m = 4096;
+  desc.k = 4096;
+  desc.lda = 4096;
   expect_family("large canonical dispatch", desc, "large");
   expect_path("large canonical dispatch", desc, "fast");
 

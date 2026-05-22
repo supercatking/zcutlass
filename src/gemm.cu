@@ -337,7 +337,8 @@ template <typename T,
           bool AlignedNoBetaBias,
           bool Experimental = false,
           int KGroup = 1,
-          bool RestrictToFamily = false>
+          bool RestrictToFamily = false,
+          bool RequireNLeK = false>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
   constexpr WmmaGemmOperation(const char* name, gemm_api::ShapeFamily family)
@@ -392,6 +393,11 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
     }
     if (BlockN == 128 && args.problem.n < 128) {
       return false;
+    }
+    if constexpr (RequireNLeK) {
+      if (args.problem.n > args.problem.k) {
+        return false;
+      }
     }
     if (BlockM == 32 && args.problem.m > 32) {
       return false;
@@ -494,9 +500,17 @@ void ensure_builtin_operations_registered() {
       f16_64x128x32_aligned_prefill(
           "zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill",
           gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 64, 128, DType::F16, true, false, 4, true, true>
+      f16_64x128x64_aligned_prefill_n_le_k(
+          "zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_n_le_k",
+          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 128, 128, DType::F16, true, true>
       f16_128x128_aligned_prefill_experimental(
           "zcutlass_sm120_tensorop_f16_128x128x16_aligned_prefill_experimental",
+          gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 64, 128, DType::F16, true, true, 4>
+      f16_64x128x64_aligned_prefill_experimental(
+          "zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_experimental",
           gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 32, 128, DType::F16, false> f16_32x128(
       "zcutlass_sm120_tensorop_f16_32x128x16", gemm_api::ShapeFamily::Decode);
@@ -516,6 +530,8 @@ void ensure_builtin_operations_registered() {
       "zcutlass_sm120_tensorop_bf16_64x64x16", gemm_api::ShapeFamily::Fallback);
 
   auto& manifest = gemm_api::global_manifest();
+  manifest.append(&f16_64x128x64_aligned_prefill_n_le_k);
+  manifest.append(&f16_64x128x64_aligned_prefill_experimental);
   manifest.append(&f16_128x128_aligned_prefill_experimental);
   manifest.append(&f16_64x128x32_aligned_prefill);
   manifest.append(&f16_64x128_aligned);

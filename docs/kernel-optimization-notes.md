@@ -8,6 +8,8 @@ foundation for measurement and dispatch work, not yet a peak SM120 kernel.
 The built-in manifest currently registers these row-major operations:
 
 - `zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill`
+- `zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_n_le_k`
+- `zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_experimental`
 - `zcutlass_sm120_tensorop_f16_128x128x16_aligned_prefill_experimental`
 - `zcutlass_sm120_tensorop_f16_64x128x16`
 - `zcutlass_sm120_tensorop_f16_64x64x16`
@@ -26,9 +28,11 @@ The `32x*` entries are registered after the `64x*` fallback kernels because
 initial spot checks showed the reused WMMA body is slower for decode shapes; they
 are placeholders for a future dedicated small-M mainloop, not the default path.
 
-The f16 prefill `64x128x32` entry is the first promoted mainloop variant. It
-groups two WMMA K slices per synchronization point and is restricted to the
-Prefill family. The `128x128x16` entry remains experimental and requires
+The f16 prefill `64x128x32` and `64x128x64_n_le_k` entries are promoted
+mainloop variants. `64x128x32` groups two WMMA K slices per synchronization
+point and handles `N > K` prefill shapes. `64x128x64_n_le_k` groups four K
+slices and handles prefill shapes where `N <= K`. The unrestricted
+`64x128x64` and `128x128x16` entries remain experimental and require
 `--experimental-kernels` or `ZCUTLASS_EXPERIMENTAL_KERNELS=1`.
 
 ## Known Gap
@@ -41,8 +45,9 @@ shapes.
 
 ## Next Optimization Order
 
-1. Continue the K-loop pipeline after the first `64x128x32` promotion: reduce
-   long-scoreboard stalls and test whether grouped loading can extend to BF16.
+1. Continue the K-loop pipeline after the f16 aspect-bucket promotion: reduce
+   long-scoreboard stalls, test whether grouped loading can extend to BF16, and
+   investigate a better `N > K` policy for MLP up-projection.
 2. Replace WMMA with explicit MMA/register epilogue once the profiler makes the
    current bottleneck clear.
 3. Investigate SM120-native Blackwell tensor-core paths only after the WMMA
