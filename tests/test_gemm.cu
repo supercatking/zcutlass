@@ -558,6 +558,8 @@ void run_dispatch_tests() {
   expect_path("LLM decode canonical dispatch", desc, "fallback");
 
   desc.m = 128;
+  expect_kernel_contains("LLM prefill canonical dispatch", desc, "64x128x16_aligned");
+  expect_kernel_not_contains("LLM prefill canonical dispatch", desc, "experimental");
   expect_family("LLM prefill canonical dispatch", desc, "prefill");
   expect_path("LLM prefill canonical dispatch", desc, "fast");
 

@@ -45,6 +45,7 @@ struct GemmOperationDescription {
   bool requires_aligned_tiles = false;
   bool supports_beta = true;
   bool supports_bias = true;
+  bool experimental = false;
 };
 
 class GemmOperation {

@@ -4,6 +4,8 @@
 #include <cuda_fp16.h>
 #include <mma.h>
 
+#include <cstdlib>
+#include <cstring>
 #include <cstdint>
 
 namespace zcutlass {
@@ -268,7 +270,20 @@ Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const voi
   return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
 }
 
-template <typename T, int BlockM, int BlockN, DType Type, bool AlignedNoBetaBias>
+bool experimental_kernels_enabled() {
+  const char* value = std::getenv("ZCUTLASS_EXPERIMENTAL_KERNELS");
+  return value != nullptr && std::strcmp(value, "0") != 0 && std::strcmp(value, "false") != 0 &&
+         std::strcmp(value, "FALSE") != 0;
+}
+
+gemm_api::ShapeFamily classify_shape_family(const gemm_api::GemmArguments& args);
+
+template <typename T,
+          int BlockM,
+          int BlockN,
+          DType Type,
+          bool AlignedNoBetaBias,
+          bool Experimental = false>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
   constexpr WmmaGemmOperation(const char* name, gemm_api::ShapeFamily family)
@@ -290,7 +305,8 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                      family,
                      AlignedNoBetaBias,
                      !AlignedNoBetaBias,
-                     !AlignedNoBetaBias} {}
+                     !AlignedNoBetaBias,
+                     Experimental} {}
 
   const gemm_api::GemmOperationDescription& description() const override {
     return description_;
@@ -308,6 +324,11 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
         args.C.layout != layout::LayoutKind::RowMajor ||
         args.D.layout != layout::LayoutKind::RowMajor) {
       return false;
+    }
+    if constexpr (Experimental) {
+      if (!experimental_kernels_enabled() || classify_shape_family(args) != description_.family) {
+        return false;
+      }
     }
     if (BlockN == 128 && args.problem.n < 128) {
       return false;
@@ -409,6 +430,10 @@ void ensure_builtin_operations_registered() {
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
       bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned",
                           gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 128, 128, DType::F16, true, true>
+      f16_128x128_aligned_prefill_experimental(
+          "zcutlass_sm120_tensorop_f16_128x128x16_aligned_prefill_experimental",
+          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 32, 128, DType::F16, false> f16_32x128(
       "zcutlass_sm120_tensorop_f16_32x128x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<half, 32, 64, DType::F16, false> f16_32x64(
@@ -427,6 +452,7 @@ void ensure_builtin_operations_registered() {
       "zcutlass_sm120_tensorop_bf16_64x64x16", gemm_api::ShapeFamily::Fallback);
 
   auto& manifest = gemm_api::global_manifest();
+  manifest.append(&f16_128x128_aligned_prefill_experimental);
   manifest.append(&f16_64x128_aligned);
   manifest.append(&bf16_64x128_aligned);
   manifest.append(&f16_64x128);
@@ -522,6 +548,9 @@ const char* selected_kernel_path(const GemmDesc& desc) {
   const auto* description = select_builtin_description(desc);
   if (description == nullptr) {
     return "none";
+  }
+  if (description->experimental) {
+    return description->requires_aligned_tiles ? "experimental_fast" : "experimental_fallback";
   }
   return description->requires_aligned_tiles ? "fast" : "fallback";
 }

@@ -66,6 +66,20 @@ python3 tools/check_benchmark_regression.py \
 Treat a failed gate as a rejected experiment unless the report includes a
 specific, profile-backed reason to keep the variant disabled or opt-in.
 
+Experimental kernels are opt-in and must not affect default dispatch:
+
+```bash
+./build/zcutlass_bench \
+  --m 128 --n 4096 --k 4096 \
+  --dtype f16 \
+  --providers zcutlass,cublas \
+  --experimental-kernels \
+  --output build/reports/prefill-experimental.jsonl
+```
+
+The JSONL `tags.kernel_path` field reports experimental selections as
+`experimental_fast` or `experimental_fallback`.
+
 For schema-v1 JSONL that can feed the visualization tool directly:
 
 ```bash

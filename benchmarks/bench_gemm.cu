@@ -53,6 +53,7 @@ struct Options {
   float beta = 0.0f;
   bool json = false;
   bool append = false;
+  bool experimental_kernels = false;
 };
 
 struct Shape {
@@ -137,11 +138,14 @@ Options parse_options(int argc, char** argv) {
       options.beta = std::atof(require_value("--beta"));
     } else if (arg == "--json") {
       options.json = true;
+    } else if (arg == "--experimental-kernels") {
+      options.experimental_kernels = true;
     } else if (arg == "--help") {
       std::cout << "Usage: zcutlass_bench [--m M --n N --k K] [--dtype f16|bf16]\n"
                 << "                      [--suite single|correctness|smoke|llm|llm-v1.5|llm-canonical|llm-decode|llm-prefill|square|ragged]\n"
                 << "                      [--providers zcutlass,cublas] [--json] [--output FILE]\n"
-                << "                      [--warmup N] [--iterations N] [--alpha X] [--beta X]\n";
+                << "                      [--warmup N] [--iterations N] [--alpha X] [--beta X]\n"
+                << "                      [--experimental-kernels]\n";
       std::exit(0);
     } else {
       std::cerr << "Unknown argument: " << arg << std::endl;
@@ -304,7 +308,8 @@ void emit_schema_record(std::ostream& out,
       << zcutlass::selected_kernel_path(desc) << "\",\"tile_m\":"
       << zcutlass::selected_kernel_tile_m(desc) << ",\"tile_n\":"
       << zcutlass::selected_kernel_tile_n(desc) << ",\"tile_k\":"
-      << zcutlass::selected_kernel_tile_k(desc) << "}}"
+      << zcutlass::selected_kernel_tile_k(desc) << ",\"experimental_kernels\":"
+      << (options.experimental_kernels ? "true" : "false") << "}}"
       << std::endl;
 }
 
@@ -444,6 +449,13 @@ void run_shape(const Shape& shape,
 
 int main(int argc, char** argv) {
   Options options = parse_options(argc, argv);
+  if (options.experimental_kernels) {
+#if defined(_WIN32)
+    _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNELS", "1");
+#else
+    setenv("ZCUTLASS_EXPERIMENTAL_KERNELS", "1", 1);
+#endif
+  }
   if (options.iterations <= 0 || options.warmup < 0) {
     std::cerr << "Invalid warmup/iteration counts" << std::endl;
     return 2;
