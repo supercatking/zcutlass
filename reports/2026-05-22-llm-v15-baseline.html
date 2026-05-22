@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>zcutlass v1.5 LLM GEMM Baseline - 2026-05-22</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 28px; color: #1f2933; }
+    h1 { margin-bottom: 4px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+    .card { border: 1px solid #d8dee4; border-radius: 8px; padding: 12px 16px; min-width: 150px; }
+    .metric { font-size: 24px; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: middle; }
+    th { background: #f6f8fa; position: sticky; top: 0; }
+    .bar { display: inline-block; height: 8px; background: #2f80ed; border-radius: 4px; margin-left: 8px; }
+    .win { color: #11805a; font-weight: 700; }
+    .behind { color: #bb3e03; font-weight: 700; }
+    .note { color: #52606d; }
+    svg { width: 100%; max-width: 720px; height: 250px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+  </style>
+</head>
+<body>
+  <h1>zcutlass v1.5 LLM GEMM Baseline - 2026-05-22</h1>
+  <div class="note">Speedup is CUTLASS latency / zcutlass latency. Values above 1.0 mean zcutlass is faster.</div>
+  <div class="cards">
+    <div class="card"><div>Compared Shapes</div><div class="metric">10</div></div>
+    <div class="card"><div>Geomean Speedup</div><div class="metric">0.592x</div></div>
+    <div class="card"><div>zcutlass Wins</div><div class="metric">2</div></div>
+    <div class="card"><div>zcutlass Behind</div><div class="metric">8</div></div>
+  </div>
+  <h2>Speedup Scatter</h2>
+  <svg viewBox="0 0 720 250" role="img">
+    <line x1="50" y1="220" x2="700" y2="220" stroke="#cbd5e1"/>
+    <line x1="50" y1="130" x2="700" y2="130" stroke="#11805a" stroke-dasharray="4 4"/>
+    <text x="8" y="134" fill="#11805a">1.0x</text>
+    <text x="8" y="44" fill="#52606d">2.0x</text>
+    <line x1="50" y1="40" x2="700" y2="40" stroke="#e5e7eb"/>
+    <circle cx="70" cy="160.5" r="5" fill="#bb3e03"><title>bf16 8x4096x4096 0.661x</title></circle><circle cx="104" cy="158.1" r="5" fill="#bb3e03"><title>bf16 128x4096x4096 0.688x</title></circle><circle cx="138" cy="177.0" r="5" fill="#bb3e03"><title>bf16 128x4096x16384 0.478x</title></circle><circle cx="172" cy="200.1" r="5" fill="#bb3e03"><title>bf16 128x16384x4096 0.221x</title></circle><circle cx="206" cy="190.2" r="5" fill="#bb3e03"><title>bf16 4096x4096x4096 0.331x</title></circle><circle cx="240" cy="106.6" r="5" fill="#11805a"><title>f16 8x4096x4096 1.260x</title></circle><circle cx="274" cy="98.3" r="5" fill="#11805a"><title>f16 128x4096x4096 1.352x</title></circle><circle cx="308" cy="147.7" r="5" fill="#bb3e03"><title>f16 128x4096x16384 0.804x</title></circle><circle cx="342" cy="183.7" r="5" fill="#bb3e03"><title>f16 128x16384x4096 0.403x</title></circle><circle cx="376" cy="166.2" r="5" fill="#bb3e03"><title>f16 4096x4096x4096 0.598x</title></circle>
+  </svg>
+  <h2>Shape Results</h2>
+  <table>
+    <thead>
+      <tr><th>Shape</th><th>zcutlass ms</th><th>CUTLASS ms</th><th>Speedup</th><th>zcutlass TFLOP/s</th><th>CUTLASS TFLOP/s</th><th>zcutlass kernel</th><th>CUTLASS kernel</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>bf16 8x4096x4096</td><td>0.2944</td><td>0.1946</td><td class='behind'>0.661x</td><td>0.91 <div class="bar" style="width:1.7px"></div></td><td>1.38 <div class="bar" style="width:2.5px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>bf16 128x4096x4096</td><td>0.2832</td><td>0.1948</td><td class='behind'>0.688x</td><td>15.16 <div class="bar" style="width:27.6px"></div></td><td>22.06 <div class="bar" style="width:40.1px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16_aligned</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>bf16 128x4096x16384</td><td>1.6824</td><td>0.8041</td><td class='behind'>0.478x</td><td>10.21 <div class="bar" style="width:18.6px"></div></td><td>21.37 <div class="bar" style="width:38.8px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16_aligned</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>bf16 128x16384x4096</td><td>0.8902</td><td>0.1971</td><td class='behind'>0.221x</td><td>19.30 <div class="bar" style="width:35.1px"></div></td><td>87.18 <div class="bar" style="width:158.5px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16_aligned</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>bf16 4096x4096x4096</td><td>4.1886</td><td>1.3884</td><td class='behind'>0.331x</td><td>32.81 <div class="bar" style="width:59.6px"></div></td><td>99.02 <div class="bar" style="width:180.0px"></div></td><td>zcutlass_sm120_tensorop_bf16_64x128x16_aligned</td><td>cutlass_tensorop_bf16_s16816gemm_bf16_256x128_32x3_tt_align8</td></tr><tr><td>f16 8x4096x4096</td><td>0.3011</td><td>0.3793</td><td class='win'>1.260x</td><td>0.89 <div class="bar" style="width:1.6px"></div></td><td>0.71 <div class="bar" style="width:1.3px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16</td><td>cutlass_tensorop_f16_s1688gemm_f16_256x128_32x2_tt_align8</td></tr><tr><td>f16 128x4096x4096</td><td>0.3009</td><td>0.4068</td><td class='win'>1.352x</td><td>14.28 <div class="bar" style="width:26.0px"></div></td><td>10.56 <div class="bar" style="width:19.2px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td><td>cutlass_tensorop_f16_s1688gemm_f16_256x128_32x2_tt_align8</td></tr><tr><td>f16 128x4096x16384</td><td>1.9459</td><td>1.5638</td><td class='behind'>0.804x</td><td>8.83 <div class="bar" style="width:16.1px"></div></td><td>10.99 <div class="bar" style="width:20.0px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td><td>cutlass_tensorop_f16_s1688gemm_f16_256x128_32x2_tt_align8</td></tr><tr><td>f16 128x16384x4096</td><td>1.0175</td><td>0.4104</td><td class='behind'>0.403x</td><td>16.88 <div class="bar" style="width:30.7px"></div></td><td>41.87 <div class="bar" style="width:76.1px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td><td>cutlass_tensorop_f16_s1688gemm_f16_256x128_32x2_tt_align8</td></tr><tr><td>f16 4096x4096x4096</td><td>4.6473</td><td>2.7791</td><td class='behind'>0.598x</td><td>29.57 <div class="bar" style="width:53.8px"></div></td><td>49.47 <div class="bar" style="width:89.9px"></div></td><td>zcutlass_sm120_tensorop_f16_64x128x16_aligned</td><td>cutlass_tensorop_f16_s1688gemm_f16_256x128_32x2_tt_align8</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>
