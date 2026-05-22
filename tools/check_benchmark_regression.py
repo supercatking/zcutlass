@@ -44,7 +44,15 @@ class Record:
     kernel: str
 
 
-def load_jsonl(path: pathlib.Path, provider: str) -> dict[Key, Record]:
+def matches_tags(record: dict[str, Any], filters: dict[str, str]) -> bool:
+    tags = record.get("tags", {})
+    for key, expected in filters.items():
+        if str(tags.get(key, "")) != expected:
+            return False
+    return True
+
+
+def load_jsonl(path: pathlib.Path, provider: str, tag_filters: dict[str, str]) -> dict[Key, Record]:
     records: dict[Key, Record] = {}
     for line_no, line in enumerate(path.read_text().splitlines(), 1):
         if not line.strip():
@@ -54,6 +62,8 @@ def load_jsonl(path: pathlib.Path, provider: str) -> dict[Key, Record]:
         except json.JSONDecodeError as exc:
             raise SystemExit(f"{path}:{line_no}: invalid JSONL: {exc}") from exc
         if raw.get("provider") != provider or raw.get("status", "success") != "success":
+            continue
+        if not matches_tags(raw, tag_filters):
             continue
         problem = raw["problem"]
         performance = raw["performance"]
@@ -102,6 +112,13 @@ def main() -> int:
     parser.add_argument("candidate", type=pathlib.Path, help="Candidate schema-v1 benchmark JSONL.")
     parser.add_argument("--provider", default="zcutlass")
     parser.add_argument(
+        "--tag",
+        action="append",
+        default=[],
+        help="Only compare records with a matching JSONL tags entry, e.g. --tag shape_family=prefill.",
+    )
+    parser.add_argument("--shape-family", help="Shortcut for --tag shape_family=VALUE.")
+    parser.add_argument(
         "--max-slowdown",
         type=float,
         default=1.05,
@@ -117,8 +134,17 @@ def main() -> int:
     parser.add_argument("--markdown", type=pathlib.Path, help="Optional Markdown table output.")
     args = parser.parse_args()
 
-    baseline = load_jsonl(args.baseline, args.provider)
-    candidate = load_jsonl(args.candidate, args.provider)
+    tag_filters: dict[str, str] = {}
+    for item in args.tag:
+        if "=" not in item:
+            raise SystemExit(f"Invalid --tag '{item}', expected KEY=VALUE")
+        key, value = item.split("=", 1)
+        tag_filters[key] = value
+    if args.shape_family:
+        tag_filters["shape_family"] = args.shape_family
+
+    baseline = load_jsonl(args.baseline, args.provider, tag_filters)
+    candidate = load_jsonl(args.candidate, args.provider, tag_filters)
     if not baseline:
         raise SystemExit(f"No baseline records found for provider '{args.provider}' in {args.baseline}")
     if not candidate:

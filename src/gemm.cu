@@ -56,25 +56,27 @@ __device__ float to_float<__nv_bfloat16>(__nv_bfloat16 value) {
   return __bfloat162float(value);
 }
 
-template <typename T, int BlockM, int BlockN, bool FastPath>
+template <typename T, int BlockM, int BlockN, bool FastPath, int KGroup>
 __global__ void wmma_gemm_kernel(GemmDesc desc,
                                  const T* __restrict__ A,
                                  const T* __restrict__ B,
                                  const T* __restrict__ C,
                                  T* __restrict__ D) {
+  constexpr int kGroupK = KGroup * kWmmaK;
   constexpr int kWarpTilesM = BlockM / kWarpTileM;
   constexpr int kWarpTilesN = BlockN / kWarpTileN;
   constexpr int kWarpsPerBlock = kWarpTilesM * kWarpTilesN;
 
   static_assert(BlockM % kWarpTileM == 0, "BlockM must be a multiple of 32");
   static_assert(BlockN % kWarpTileN == 0, "BlockN must be a multiple of 32");
+  static_assert(KGroup >= 1, "KGroup must be positive");
   static_assert(kWarpsPerBlock <= 16, "This kernel keeps shared memory under 96 KiB");
 
   extern __shared__ __align__(16) unsigned char shared_storage[];
   T* a_tile = reinterpret_cast<T*>(shared_storage);
-  T* b_tile = a_tile + BlockM * kWmmaK;
+  T* b_tile = a_tile + BlockM * kGroupK;
   float* accumulator_tiles =
-      reinterpret_cast<float*>(b_tile + kWmmaK * BlockN);
+      reinterpret_cast<float*>(b_tile + kGroupK * BlockN);
 
   const int tid = threadIdx.x;
   const int warp_id = tid / kWarpSize;
@@ -116,41 +118,85 @@ __global__ void wmma_gemm_kernel(GemmDesc desc,
 
   const T zero = from_float<T>(0.0f);
 
-  for (int64_t k0 = 0; k0 < desc.k; k0 += kWmmaK) {
-    for (int idx = tid; idx < BlockM * kWmmaK; idx += blockDim.x) {
-      const int row = idx / kWmmaK;
-      const int col = idx % kWmmaK;
-      const int64_t gm = block_m + row;
-      const int64_t gk = k0 + col;
-      if constexpr (FastPath) {
-        a_tile[idx] = A[gm * desc.lda + gk];
-      } else {
-        a_tile[idx] = (gm < desc.m && gk < desc.k) ? A[gm * desc.lda + gk] : zero;
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kGroupK) {
+    if constexpr (KGroup == 1) {
+      for (int idx = tid; idx < BlockM * kWmmaK; idx += blockDim.x) {
+        const int row = idx / kWmmaK;
+        const int col = idx % kWmmaK;
+        const int64_t gm = block_m + row;
+        const int64_t gk = k0 + col;
+        if constexpr (FastPath) {
+          a_tile[idx] = A[gm * desc.lda + gk];
+        } else {
+          a_tile[idx] = (gm < desc.m && gk < desc.k) ? A[gm * desc.lda + gk] : zero;
+        }
+      }
+
+      for (int idx = tid; idx < kWmmaK * BlockN; idx += blockDim.x) {
+        const int row = idx / BlockN;
+        const int col = idx % BlockN;
+        const int64_t gk = k0 + row;
+        const int64_t gn = block_n + col;
+        if constexpr (FastPath) {
+          b_tile[idx] = B[gk * desc.ldb + gn];
+        } else {
+          b_tile[idx] = (gk < desc.k && gn < desc.n) ? B[gk * desc.ldb + gn] : zero;
+        }
+      }
+
+      __syncthreads();
+      load_matrix_sync(a0_frag, a_tile + local_m * kWmmaK, kWmmaK);
+      load_matrix_sync(a1_frag, a_tile + (local_m + kWmmaM) * kWmmaK, kWmmaK);
+      load_matrix_sync(b0_frag, b_tile + local_n, BlockN);
+      load_matrix_sync(b1_frag, b_tile + local_n + kWmmaN, BlockN);
+
+      mma_sync(c00_frag, a0_frag, b0_frag, c00_frag);
+      mma_sync(c01_frag, a0_frag, b1_frag, c01_frag);
+      mma_sync(c10_frag, a1_frag, b0_frag, c10_frag);
+      mma_sync(c11_frag, a1_frag, b1_frag, c11_frag);
+    } else {
+      for (int idx = tid; idx < BlockM * kGroupK; idx += blockDim.x) {
+        const int row = idx / kGroupK;
+        const int col = idx % kGroupK;
+        const int64_t gm = block_m + row;
+        const int64_t gk = k0 + col;
+        if constexpr (FastPath) {
+          a_tile[row * kGroupK + col] = A[gm * desc.lda + gk];
+        } else {
+          a_tile[row * kGroupK + col] =
+              (gm < desc.m && gk < desc.k) ? A[gm * desc.lda + gk] : zero;
+        }
+      }
+
+      for (int idx = tid; idx < kGroupK * BlockN; idx += blockDim.x) {
+        const int row = idx / BlockN;
+        const int col = idx % BlockN;
+        const int64_t gk = k0 + row;
+        const int64_t gn = block_n + col;
+        if constexpr (FastPath) {
+          b_tile[idx] = B[gk * desc.ldb + gn];
+        } else {
+          b_tile[idx] = (gk < desc.k && gn < desc.n) ? B[gk * desc.ldb + gn] : zero;
+        }
+      }
+
+      __syncthreads();
+#pragma unroll
+      for (int k_stage = 0; k_stage < KGroup; ++k_stage) {
+        const int k_offset = k_stage * kWmmaK;
+        load_matrix_sync(a0_frag, a_tile + local_m * kGroupK + k_offset, kGroupK);
+        load_matrix_sync(a1_frag, a_tile + (local_m + kWmmaM) * kGroupK + k_offset,
+                         kGroupK);
+        load_matrix_sync(b0_frag, b_tile + k_offset * BlockN + local_n, BlockN);
+        load_matrix_sync(b1_frag, b_tile + k_offset * BlockN + local_n + kWmmaN,
+                         BlockN);
+
+        mma_sync(c00_frag, a0_frag, b0_frag, c00_frag);
+        mma_sync(c01_frag, a0_frag, b1_frag, c01_frag);
+        mma_sync(c10_frag, a1_frag, b0_frag, c10_frag);
+        mma_sync(c11_frag, a1_frag, b1_frag, c11_frag);
       }
     }
-
-    for (int idx = tid; idx < kWmmaK * BlockN; idx += blockDim.x) {
-      const int row = idx / BlockN;
-      const int col = idx % BlockN;
-      const int64_t gk = k0 + row;
-      const int64_t gn = block_n + col;
-      if constexpr (FastPath) {
-        b_tile[idx] = B[gk * desc.ldb + gn];
-      } else {
-        b_tile[idx] = (gk < desc.k && gn < desc.n) ? B[gk * desc.ldb + gn] : zero;
-      }
-    }
-
-    __syncthreads();
-    load_matrix_sync(a0_frag, a_tile + local_m * kWmmaK, kWmmaK);
-    load_matrix_sync(a1_frag, a_tile + (local_m + kWmmaM) * kWmmaK, kWmmaK);
-    load_matrix_sync(b0_frag, b_tile + local_n, BlockN);
-    load_matrix_sync(b1_frag, b_tile + local_n + kWmmaN, BlockN);
-
-    mma_sync(c00_frag, a0_frag, b0_frag, c00_frag);
-    mma_sync(c01_frag, a0_frag, b1_frag, c01_frag);
-    mma_sync(c10_frag, a1_frag, b0_frag, c10_frag);
-    mma_sync(c11_frag, a1_frag, b1_frag, c11_frag);
     __syncthreads();
   }
 
@@ -244,18 +290,19 @@ Status validate_desc(const GemmDesc& desc,
   return Status::Success;
 }
 
-template <typename T, int BlockM, int BlockN, bool FastPath = false>
+template <typename T, int BlockM, int BlockN, bool FastPath = false, int KGroup = 1>
 Status launch_wmma(const GemmDesc& desc, const void* A, const void* B, const void* C, void* D) {
+  constexpr int kGroupK = KGroup * kWmmaK;
   constexpr int kWarpsPerBlock = (BlockM / kWarpTileM) * (BlockN / kWarpTileN);
   constexpr int kThreads = kWarpsPerBlock * kWarpSize;
   const dim3 block(kThreads);
   const dim3 grid((static_cast<unsigned int>(desc.n) + BlockN - 1) / BlockN,
                   (static_cast<unsigned int>(desc.m) + BlockM - 1) / BlockM);
   const size_t shared_bytes =
-      (BlockM * kWmmaK + kWmmaK * BlockN) * sizeof(T) +
+      (BlockM * kGroupK + kGroupK * BlockN) * sizeof(T) +
       kWarpsPerBlock * kTileElementsPerWarp * sizeof(float);
 
-  auto kernel = wmma_gemm_kernel<T, BlockM, BlockN, FastPath>;
+  auto kernel = wmma_gemm_kernel<T, BlockM, BlockN, FastPath, KGroup>;
   const cudaError_t attr_status =
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
                            static_cast<int>(shared_bytes));
@@ -276,6 +323,11 @@ bool experimental_kernels_enabled() {
          std::strcmp(value, "FALSE") != 0;
 }
 
+bool experimental_kernel_filter_matches(const char* name) {
+  const char* filter = std::getenv("ZCUTLASS_EXPERIMENTAL_KERNEL");
+  return filter == nullptr || filter[0] == '\0' || std::strstr(name, filter) != nullptr;
+}
+
 gemm_api::ShapeFamily classify_shape_family(const gemm_api::GemmArguments& args);
 
 template <typename T,
@@ -283,7 +335,9 @@ template <typename T,
           int BlockN,
           DType Type,
           bool AlignedNoBetaBias,
-          bool Experimental = false>
+          bool Experimental = false,
+          int KGroup = 1,
+          bool RestrictToFamily = false>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
   constexpr WmmaGemmOperation(const char* name, gemm_api::ShapeFamily family)
@@ -301,7 +355,7 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                      arch::OpClass::TensorOp,
                      BlockM,
                      BlockN,
-                     kWmmaK,
+                     KGroup * kWmmaK,
                      family,
                      AlignedNoBetaBias,
                      !AlignedNoBetaBias,
@@ -325,8 +379,14 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
         args.D.layout != layout::LayoutKind::RowMajor) {
       return false;
     }
+    if constexpr (Experimental || RestrictToFamily) {
+      const gemm_api::ShapeFamily family = classify_shape_family(args);
+      if (family != description_.family) {
+        return false;
+      }
+    }
     if constexpr (Experimental) {
-      if (!experimental_kernels_enabled() || classify_shape_family(args) != description_.family) {
+      if (!experimental_kernels_enabled() || !experimental_kernel_filter_matches(description_.name)) {
         return false;
       }
     }
@@ -338,7 +398,7 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
     }
     if (AlignedNoBetaBias) {
       if (args.problem.m % BlockM != 0 || args.problem.n % BlockN != 0 ||
-          args.problem.k % kWmmaK != 0) {
+          args.problem.k % (KGroup * kWmmaK) != 0) {
         return false;
       }
       if (args.alpha != 1.0f || args.beta != 0.0f || args.bias != nullptr) {
@@ -374,7 +434,7 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                   args.B.layout,
                   args.C.layout,
                   args.D.layout};
-    return launch_wmma<T, BlockM, BlockN, AlignedNoBetaBias>(
+    return launch_wmma<T, BlockM, BlockN, AlignedNoBetaBias, KGroup>(
         desc, args.A.data, args.B.data, args.C.data, args.D.data);
   }
 
@@ -430,6 +490,10 @@ void ensure_builtin_operations_registered() {
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
       bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned",
                           gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 64, 128, DType::F16, true, false, 2, true>
+      f16_64x128x32_aligned_prefill(
+          "zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill",
+          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 128, 128, DType::F16, true, true>
       f16_128x128_aligned_prefill_experimental(
           "zcutlass_sm120_tensorop_f16_128x128x16_aligned_prefill_experimental",
@@ -453,6 +517,7 @@ void ensure_builtin_operations_registered() {
 
   auto& manifest = gemm_api::global_manifest();
   manifest.append(&f16_128x128_aligned_prefill_experimental);
+  manifest.append(&f16_64x128x32_aligned_prefill);
   manifest.append(&f16_64x128_aligned);
   manifest.append(&bf16_64x128_aligned);
   manifest.append(&f16_64x128);

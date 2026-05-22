@@ -54,6 +54,7 @@ struct Options {
   bool json = false;
   bool append = false;
   bool experimental_kernels = false;
+  std::string experimental_kernel;
 };
 
 struct Shape {
@@ -140,12 +141,15 @@ Options parse_options(int argc, char** argv) {
       options.json = true;
     } else if (arg == "--experimental-kernels") {
       options.experimental_kernels = true;
+    } else if (arg == "--experimental-kernel") {
+      options.experimental_kernels = true;
+      options.experimental_kernel = require_value("--experimental-kernel");
     } else if (arg == "--help") {
       std::cout << "Usage: zcutlass_bench [--m M --n N --k K] [--dtype f16|bf16]\n"
                 << "                      [--suite single|correctness|smoke|llm|llm-v1.5|llm-canonical|llm-decode|llm-prefill|square|ragged]\n"
                 << "                      [--providers zcutlass,cublas] [--json] [--output FILE]\n"
                 << "                      [--warmup N] [--iterations N] [--alpha X] [--beta X]\n"
-                << "                      [--experimental-kernels]\n";
+                << "                      [--experimental-kernels] [--experimental-kernel NAME]\n";
       std::exit(0);
     } else {
       std::cerr << "Unknown argument: " << arg << std::endl;
@@ -309,7 +313,8 @@ void emit_schema_record(std::ostream& out,
       << zcutlass::selected_kernel_tile_m(desc) << ",\"tile_n\":"
       << zcutlass::selected_kernel_tile_n(desc) << ",\"tile_k\":"
       << zcutlass::selected_kernel_tile_k(desc) << ",\"experimental_kernels\":"
-      << (options.experimental_kernels ? "true" : "false") << "}}"
+      << (options.experimental_kernels ? "true" : "false")
+      << ",\"experimental_kernel_filter\":\"" << options.experimental_kernel << "\"}}"
       << std::endl;
 }
 
@@ -452,8 +457,14 @@ int main(int argc, char** argv) {
   if (options.experimental_kernels) {
 #if defined(_WIN32)
     _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNELS", "1");
+    if (!options.experimental_kernel.empty()) {
+      _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNEL", options.experimental_kernel.c_str());
+    }
 #else
     setenv("ZCUTLASS_EXPERIMENTAL_KERNELS", "1", 1);
+    if (!options.experimental_kernel.empty()) {
+      setenv("ZCUTLASS_EXPERIMENTAL_KERNEL", options.experimental_kernel.c_str(), 1);
+    }
 #endif
   }
   if (options.iterations <= 0 || options.warmup < 0) {

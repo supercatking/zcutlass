@@ -74,6 +74,7 @@ Experimental kernels are opt-in and must not affect default dispatch:
   --dtype f16 \
   --providers zcutlass,cublas \
   --experimental-kernels \
+  --experimental-kernel 128x128 \
   --output build/reports/prefill-experimental.jsonl
 ```
 
