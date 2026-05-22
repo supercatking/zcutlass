@@ -1,0 +1,114 @@
+{
+  "source": "/home/zyz/zcutlass/reports/profiles/2026-05-23-prefill-bf16-64x128x32-experimental.csv",
+  "shape": {
+    "m": 128,
+    "n": 4096,
+    "k": 4096,
+    "dtype": "bf16"
+  },
+  "kernels": [
+    "void unnamed>::wmma_gemm_kernel<__nv_bfloat16, 64, 128, 1, 2>(GemmDesc, const T1 *, const T1 *, const T1 *, T1 *)"
+  ],
+  "throughput_pct_of_peak": {
+    "sm": {
+      "metric": "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+      "value": 14.428671,
+      "unit": "%"
+    },
+    "tensor": {
+      "metric": "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed",
+      "value": 9.534956,
+      "unit": "%"
+    },
+    "dram": {
+      "metric": "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+      "value": 9.050502,
+      "unit": "%"
+    }
+  },
+  "occupancy": {
+    "achieved": {
+      "metric": "sm__warps_active.avg.pct_of_peak_sustained_active",
+      "value": 16.664405,
+      "unit": "%"
+    },
+    "theoretical": {
+      "metric": "launch__occupancy_limit_registers",
+      "value": 3,
+      "unit": "block"
+    }
+  },
+  "resources": {
+    "registers_per_thread": {
+      "metric": "launch__registers_per_thread",
+      "value": 71,
+      "unit": "register/thread"
+    },
+    "shared_memory_per_block": {
+      "metric": "launch__shared_mem_per_block_allocated",
+      "value": 46.08,
+      "unit": "KB/block"
+    },
+    "block_size": {
+      "metric": "launch__block_size",
+      "value": 256,
+      "unit": ""
+    },
+    "grid_size": {
+      "metric": "launch__grid_size",
+      "value": 64,
+      "unit": ""
+    }
+  },
+  "top_stalls": [
+    {
+      "reason": "long scoreboard",
+      "metric": "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
+      "value": 9.511262,
+      "unit": "inst"
+    },
+    {
+      "reason": "wait",
+      "metric": "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio",
+      "value": 1.357871,
+      "unit": "inst"
+    },
+    {
+      "reason": "lg throttle",
+      "metric": "smsp__average_warps_issue_stalled_lg_throttle_per_issue_active.ratio",
+      "value": 1.040306,
+      "unit": "inst"
+    },
+    {
+      "reason": "selected",
+      "metric": "smsp__average_warps_issue_stalled_selected_per_issue_active.ratio",
+      "value": 1,
+      "unit": "inst"
+    },
+    {
+      "reason": "short scoreboard",
+      "metric": "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
+      "value": 0.980797,
+      "unit": "inst"
+    },
+    {
+      "reason": "math pipe throttle",
+      "metric": "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio",
+      "value": 0.883306,
+      "unit": "inst"
+    },
+    {
+      "reason": "mio throttle",
+      "metric": "smsp__average_warps_issue_stalled_mio_throttle_per_issue_active.ratio",
+      "value": 0.541742,
+      "unit": "inst"
+    },
+    {
+      "reason": "barrier",
+      "metric": "smsp__average_warps_issue_stalled_barrier_per_issue_active.ratio",
+      "value": 0.253183,
+      "unit": "inst"
+    }
+  ],
+  "metric_count": 665
+}

@@ -620,6 +620,26 @@ void run_dispatch_tests() {
   expect_family("large canonical dispatch", desc, "large");
   expect_path("large canonical dispatch", desc, "fast");
 
+  desc.m = 128;
+  desc.n = 4096;
+  desc.k = 4096;
+  desc.lda = 4096;
+  desc.ldb = 4096;
+  desc.ldc = 4096;
+  desc.ldd = 4096;
+  desc.a_type = zcutlass::DType::BF16;
+  desc.b_type = zcutlass::DType::BF16;
+  desc.c_type = zcutlass::DType::BF16;
+  desc.d_type = zcutlass::DType::BF16;
+  expect_kernel_contains("BF16 prefill default dispatch", desc, "bf16_64x128x32_aligned_prefill");
+  expect_path("BF16 prefill default dispatch", desc, "fast");
+
+  desc.a_type = zcutlass::DType::F16;
+  desc.b_type = zcutlass::DType::F16;
+  desc.c_type = zcutlass::DType::F16;
+  desc.d_type = zcutlass::DType::F16;
+
+  desc.m = 4096;
   desc.alpha = 0.5f;
   expect_kernel_contains("alpha f16 dispatch", desc, "64x128x16");
   expect_kernel_not_contains("alpha f16 dispatch", desc, "aligned");

@@ -9,8 +9,11 @@ The built-in manifest currently registers these row-major operations:
 
 - `zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill`
 - `zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_n_le_k`
+- `zcutlass_sm120_tensorop_f16_64x256x16_aligned_prefill_n_gt_k_experimental`
+- `zcutlass_sm120_tensorop_f16_64x256x32_aligned_prefill_n_gt_k_experimental`
 - `zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_experimental`
 - `zcutlass_sm120_tensorop_f16_128x128x16_aligned_prefill_experimental`
+- `zcutlass_sm120_tensorop_bf16_64x128x32_aligned_prefill`
 - `zcutlass_sm120_tensorop_f16_64x128x16`
 - `zcutlass_sm120_tensorop_f16_64x64x16`
 - `zcutlass_sm120_tensorop_bf16_64x128x16`
@@ -32,8 +35,14 @@ The f16 prefill `64x128x32` and `64x128x64_n_le_k` entries are promoted
 mainloop variants. `64x128x32` groups two WMMA K slices per synchronization
 point and handles `N > K` prefill shapes. `64x128x64_n_le_k` groups four K
 slices and handles prefill shapes where `N <= K`. The unrestricted
-`64x128x64` and `128x128x16` entries remain experimental and require
-`--experimental-kernels` or `ZCUTLASS_EXPERIMENTAL_KERNELS=1`.
+`64x128x64`, `128x128x16`, and the f16 `64x256x*` N>K entries remain
+experimental and require `--experimental-kernels` or
+`ZCUTLASS_EXPERIMENTAL_KERNELS=1`.
+
+The bf16 prefill `64x128x32` entry is promoted for all aligned prefill buckets.
+It groups two WMMA K slices per synchronization point and replaces the previous
+bf16 `64x128x16_aligned` prefill default. The old bf16 KGroup=1 aligned kernel
+remains available for large/throughput and non-prefill aligned shapes.
 
 ## Known Gap
 

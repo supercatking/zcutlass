@@ -502,6 +502,10 @@ void ensure_builtin_operations_registered() {
   static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true>
       bf16_64x128_aligned("zcutlass_sm120_tensorop_bf16_64x128x16_aligned",
                           gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<__nv_bfloat16, 64, 128, DType::BF16, true, false, 2, true>
+      bf16_64x128x32_aligned_prefill(
+          "zcutlass_sm120_tensorop_bf16_64x128x32_aligned_prefill",
+          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 64, 128, DType::F16, true, false, 2, true>
       f16_64x128x32_aligned_prefill(
           "zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill",
@@ -551,6 +555,7 @@ void ensure_builtin_operations_registered() {
   manifest.append(&f16_128x128_aligned_prefill_experimental);
   manifest.append(&f16_64x128x32_aligned_prefill);
   manifest.append(&f16_64x128_aligned);
+  manifest.append(&bf16_64x128x32_aligned_prefill);
   manifest.append(&bf16_64x128_aligned);
   manifest.append(&f16_64x128);
   manifest.append(&f16_64x64);
