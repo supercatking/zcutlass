@@ -308,6 +308,28 @@ python tools/check_vllm_linear_method.py \
   --require-fallback
 ```
 
+For repeatable vLLM LinearMethod measurements across a small suite, use the
+benchmark harness. It writes schema-v1 JSONL for both stock vLLM and zcutlass
+overlay paths, including `last_trace.selected_config.kernel_name` for hits:
+
+```bash
+source /home/zyz/vllm/.venv/bin/activate
+cd /home/zyz/zcutlass
+
+python tools/benchmark_vllm_linear_method.py \
+  --suite smoke \
+  --dtype both \
+  --allow-family prefill \
+  --materialize-inputs \
+  --output reports/manual-vllm-linear-method-smoke.jsonl \
+  --summary
+```
+
+This is not a serving benchmark. It is the bridge check before a real vLLM model
+or worker integration because it proves zcutlass routing, correctness, fallback
+behavior, selected kernel metadata, and per-callsite latency in the vLLM
+LinearMethod abstraction.
+
 If the vLLM environment uses a PyTorch CUDA wheel whose CUDA version does not
 match the system `nvcc`, the extension build will stop with PyTorch's CUDA
 mismatch check. For the local WSL setup where PyTorch is `cu129` and system

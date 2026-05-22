@@ -52,6 +52,13 @@ kernel for dense `alpha=1,beta=0,bias=null` problems. That path removes boundary
 predicates and beta/bias work while preserving the fallback kernel for ragged
 shapes.
 
+The WMMA fast path still spills FP32 accumulator fragments to shared memory
+before converting to FP16/BF16 output. That is not just an implementation
+oversight: `wmma::store_matrix_sync` stores accumulator fragments as their
+accumulator element type, so the current FP32-accumulate WMMA path cannot
+directly store to FP16/BF16 D. Removing this shared-memory accumulator spill
+requires a lower-level MMA/register-epilogue implementation.
+
 ## Next Optimization Order
 
 1. Continue the K-loop pipeline after the f16 aspect-bucket promotion: reduce
