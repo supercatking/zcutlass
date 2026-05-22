@@ -48,6 +48,24 @@ python3 tools/compare_cutlass.py --m 256 --n 4096 --k 4096 --dtype f16 --cutlass
 python3 tools/compare_cutlass.py --suite llm-v1.5 --dtype both --warmup 3 --iterations 10 --summary
 ```
 
+Before promoting a new default dispatch or kernel variant, compare it against a
+known-good JSONL baseline. The gate compares matching shapes for one provider
+and exits non-zero if any shape exceeds the slowdown threshold or the geomean
+speedup falls below the configured floor:
+
+```bash
+python3 tools/check_benchmark_regression.py \
+  reports/2026-05-22-llm-v15-zcutlass-cublas.jsonl \
+  build/reports/candidate-llm-v15.jsonl \
+  --provider zcutlass \
+  --max-slowdown 1.05 \
+  --min-geomean-speedup 0.98 \
+  --markdown build/reports/candidate-regression-check.md
+```
+
+Treat a failed gate as a rejected experiment unless the report includes a
+specific, profile-backed reason to keep the variant disabled or opt-in.
+
 For schema-v1 JSONL that can feed the visualization tool directly:
 
 ```bash
