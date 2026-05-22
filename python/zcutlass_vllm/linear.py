@@ -8,7 +8,7 @@ keeping unpromoted shapes on the stock PyTorch path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from zcutlass_torch import RoutingPolicy, ZCutlassGemmOverlay
 
@@ -60,6 +60,31 @@ class ZCutlassVllmLinearAdapter:
             weight_is_transposed: set true for the zcutlass fast path.
         """
 
+        return self.run(
+            x,
+            weight,
+            bias,
+            weight_is_transposed=weight_is_transposed,
+        )
+
+    def run(
+        self,
+        x,
+        weight,
+        bias=None,
+        *,
+        weight_is_transposed: bool = False,
+        fallback_fn: Optional[Callable[[], Any]] = None,
+        fallback_path_name: str = "framework_fallback",
+    ):
+        """Run one Linear callsite with an optional framework fallback.
+
+        When `fallback_fn` is provided, unsupported or non-promoted zcutlass
+        routes delegate to that callable instead of using the PyTorch matmul
+        fallback inside `ZCutlassGemmOverlay`. This is the path vLLM uses to
+        preserve its native GEMM dispatcher for misses.
+        """
+
         if self.materialize_inputs and hasattr(x, "is_contiguous") and not x.is_contiguous():
             x = x.contiguous()
 
@@ -67,7 +92,29 @@ class ZCutlassVllmLinearAdapter:
             routing_policy=RoutingPolicy(promoted_families=self.promoted_families),
             force_zcutlass=self.force_zcutlass,
         )
-        out = overlay.linear(x, weight, bias, weight_is_transposed=weight_is_transposed)
+        if fallback_fn is not None:
+            if not weight_is_transposed:
+                overlay.stats.record_miss("weight_not_pretransposed")
+                overlay.last_family = "unknown"
+                overlay.last_kernel_path = fallback_path_name
+                overlay.last_fallback_reason = "weight_not_pretransposed"
+                out = fallback_fn()
+            else:
+                reason = overlay._reject_reason(x, weight, None, bias, 0.0)
+                if reason is not None:
+                    overlay.stats.record_miss(reason)
+                    overlay.last_kernel_path = fallback_path_name
+                    overlay.last_fallback_reason = reason
+                    out = fallback_fn()
+                else:
+                    overlay.stats.record_hit()
+                    overlay.last_kernel_path = "zcutlass"
+                    overlay.last_fallback_reason = None
+                    import torch
+
+                    out = torch.ops.zcutlass_torch.gemm(x, weight, None, bias, 1.0, 0.0)
+        else:
+            out = overlay.linear(x, weight, bias, weight_is_transposed=weight_is_transposed)
         self.stats.update_from_overlay(overlay)
         self.last_trace = {
             "family": overlay.last_family,

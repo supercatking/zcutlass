@@ -269,6 +269,28 @@ This check does not claim vLLM end-to-end acceleration. It only verifies the
 plugin discovery and adapter import layer needed before a custom vLLM model or
 worker path routes selected Linear callsites through zcutlass.
 
+To validate the next integration layer, use the vLLM `UnquantizedLinearMethod`
+probe. It replaces one dummy vLLM-style Linear layer's `quant_method` with the
+explicit zcutlass wrapper, so hits route through zcutlass while misses delegate
+back to vLLM's native unquantized GEMM path:
+
+```bash
+source /home/zyz/vllm/.venv/bin/activate
+cd /home/zyz/zcutlass
+
+python tools/check_vllm_linear_method.py \
+  --m 128 --n 4096 --k 1024 \
+  --dtype f16 \
+  --allow-family prefill \
+  --require-hit
+
+python tools/check_vllm_linear_method.py \
+  --m 8 --n 512 --k 512 \
+  --dtype f16 \
+  --allow-family prefill \
+  --require-fallback
+```
+
 ## Record
 
 Capture enough context to make a result repeatable:
