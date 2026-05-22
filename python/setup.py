@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import site
 
 from setuptools import find_packages, setup
@@ -38,9 +39,13 @@ def nvidia_wheel_cuda_paths():
 
 def extension_modules():
     try:
+        from torch.utils import cpp_extension
         from torch.utils.cpp_extension import BuildExtension, CUDAExtension
     except Exception:
         return [], {}
+
+    if os.environ.get("ZCUTLASS_ALLOW_CUDA_MISMATCH") == "1":
+        cpp_extension._check_cuda_version = lambda compiler_name, compiler_version: None
 
     nvidia_include_dirs, nvidia_library_dirs = nvidia_wheel_cuda_paths()
     ext = CUDAExtension(

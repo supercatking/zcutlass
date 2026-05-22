@@ -306,6 +306,21 @@ python tools/check_vllm_linear_method.py \
   --require-fallback
 ```
 
+If the vLLM environment uses a PyTorch CUDA wheel whose CUDA version does not
+match the system `nvcc`, the extension build will stop with PyTorch's CUDA
+mismatch check. For the local WSL setup where PyTorch is `cu129` and system
+`nvcc` is CUDA 13.1, rebuild only with an explicit opt-in:
+
+```bash
+source /home/zyz/vllm/.venv/bin/activate
+cd /home/zyz/zcutlass
+ZCUTLASS_ALLOW_CUDA_MISMATCH=1 MAX_JOBS=16 \
+  python -m pip install -e ./python --no-build-isolation
+```
+
+Do not use this as a portable release build rule; it is a local development
+escape hatch until a matching CUDA 12.9 `nvcc` is available.
+
 ## Record
 
 Capture enough context to make a result repeatable:
