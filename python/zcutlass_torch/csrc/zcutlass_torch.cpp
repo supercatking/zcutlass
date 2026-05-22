@@ -10,6 +10,8 @@
 
 namespace {
 
+namespace py = pybind11;
+
 zcutlass::DType dtype_from_tensor(const at::Tensor& tensor) {
   if (tensor.scalar_type() == at::kHalf) {
     return zcutlass::DType::F16;
@@ -86,6 +88,64 @@ at::Tensor zcutlass_gemm(torch::Tensor a,
   return d;
 }
 
+py::dict selected_gemm_config(torch::Tensor a,
+                              torch::Tensor b,
+                              std::optional<torch::Tensor> c,
+                              std::optional<torch::Tensor> bias,
+                              double alpha,
+                              double beta) {
+  check_2d_cuda_contiguous(a, "A");
+  check_2d_cuda_contiguous(b, "B");
+  TORCH_CHECK(a.scalar_type() == b.scalar_type(), "A and B dtype must match");
+  TORCH_CHECK(a.size(1) == b.size(0), "A.shape[1] must equal B.shape[0]");
+  TORCH_CHECK(a.device() == b.device(), "A and B must be on the same CUDA device");
+
+  if (c.has_value()) {
+    check_2d_cuda_contiguous(*c, "C");
+    TORCH_CHECK(c->scalar_type() == a.scalar_type(), "C dtype must match A/B");
+    TORCH_CHECK(c->device() == a.device(), "C must be on the same CUDA device");
+    TORCH_CHECK(c->size(0) == a.size(0) && c->size(1) == b.size(1),
+                "C shape must be [A.shape[0], B.shape[1]]");
+  }
+  if (bias.has_value()) {
+    TORCH_CHECK(bias->is_cuda(), "bias must be a CUDA tensor");
+    TORCH_CHECK(bias->dim() == 1, "bias must be rank-1");
+    TORCH_CHECK(bias->is_contiguous(), "bias must be contiguous");
+    TORCH_CHECK(bias->scalar_type() == a.scalar_type(), "bias dtype must match A/B");
+    TORCH_CHECK(bias->device() == a.device(), "bias must be on the same CUDA device");
+    TORCH_CHECK(bias->size(0) == b.size(1), "bias length must equal B.shape[1]");
+  }
+
+  zcutlass::GemmDesc desc{a.size(0),
+                          b.size(1),
+                          a.size(1),
+                          a.stride(0),
+                          b.stride(0),
+                          c.has_value() ? c->stride(0) : b.size(1),
+                          b.size(1),
+                          dtype_from_tensor(a),
+                          dtype_from_tensor(b),
+                          dtype_from_tensor(a),
+                          dtype_from_tensor(a),
+                          static_cast<float>(alpha),
+                          static_cast<float>(beta),
+                          bias.has_value() ? bias->data_ptr() : nullptr,
+                          nullptr};
+
+  py::dict tile;
+  tile["m"] = zcutlass::selected_kernel_tile_m(desc);
+  tile["n"] = zcutlass::selected_kernel_tile_n(desc);
+  tile["k"] = zcutlass::selected_kernel_tile_k(desc);
+
+  py::dict config;
+  config["kernel_name"] = zcutlass::selected_kernel_name(desc);
+  config["shape_family"] = zcutlass::selected_kernel_family(desc);
+  config["kernel_path"] = zcutlass::selected_kernel_path(desc);
+  config["tile"] = tile;
+  config["registered_gemm_operations"] = zcutlass::registered_gemm_operation_count();
+  return config;
+}
+
 }  // namespace
 
 TORCH_LIBRARY(zcutlass_torch, m) {
@@ -93,4 +153,13 @@ TORCH_LIBRARY(zcutlass_torch, m) {
   m.impl("gemm", torch::dispatch(c10::DispatchKey::CUDA, TORCH_FN(zcutlass_gemm)));
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("selected_gemm_config",
+        &selected_gemm_config,
+        py::arg("A"),
+        py::arg("B"),
+        py::arg("C") = std::nullopt,
+        py::arg("bias") = std::nullopt,
+        py::arg("alpha") = 1.0,
+        py::arg("beta") = 0.0);
+}

@@ -28,6 +28,7 @@ A = torch.randn((128, 4096), device="cuda", dtype=torch.float16)
 B = torch.randn((4096, 4096), device="cuda", dtype=torch.float16)
 D = overlay.gemm(A, B)
 print(overlay.stats.hits, overlay.stats.fallback_reasons)
+print(overlay.last_kernel_name, overlay.last_tile)
 ```
 
 For Linear layers, PyTorch stores weight as `[out_features, in_features]`, while
@@ -108,3 +109,8 @@ python3 tools/check_vllm_plugin.py --require-entry-point
 The vLLM-facing adapter is `zcutlass_vllm.ZCutlassVllmLinearAdapter`. It routes
 explicit Linear callsites through `ZCutlassGemmOverlay` and records hit/miss and
 fallback reasons for the serving proof.
+
+For hit paths, the overlay also records the selected C++ dispatch metadata:
+`last_family`, `last_kernel_path`, `last_kernel_name`, `last_tile`, and
+`last_config`. This is the evidence used to prove a framework callsite actually
+hit a specific zcutlass kernel instead of only passing through a Python wrapper.

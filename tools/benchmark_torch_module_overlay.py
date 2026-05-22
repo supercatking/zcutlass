@@ -166,6 +166,9 @@ def make_overlay_block(torch, stock, overlay_cls, routing_policy_cls, config: Mo
                     "module": name,
                     "family": self.overlay.last_family,
                     "path": self.overlay.last_kernel_path,
+                    "kernel_name": self.overlay.last_kernel_name,
+                    "tile": self.overlay.last_tile,
+                    "selected_config": self.overlay.last_config,
                     "fallback_reason": self.overlay.last_fallback_reason,
                     "materialized_input": materialized_input,
                 }

@@ -22,6 +22,16 @@ def extension_available() -> bool:
     return _load_extension()
 
 
+def selected_gemm_config(a, b, c=None, bias=None, alpha: float = 1.0, beta: float = 0.0):
+    """Return the zcutlass dispatch metadata for one GEMM-shaped callsite."""
+
+    if not _load_extension():
+        return None
+    import zcutlass_torch._C as extension
+
+    return dict(extension.selected_gemm_config(a, b, c, bias, float(alpha), float(beta)))
+
+
 @dataclass
 class OverlayStats:
     hits: int = 0
@@ -104,6 +114,9 @@ class ZCutlassGemmOverlay:
         self._loaded = False
         self.last_family = "unknown"
         self.last_kernel_path = "unknown"
+        self.last_kernel_name = "unknown"
+        self.last_tile = {"m": 0, "n": 0, "k": 0}
+        self.last_config: Optional[dict] = None
         self.last_fallback_reason: Optional[str] = None
 
     def _ensure_loaded(self) -> bool:
@@ -118,6 +131,9 @@ class ZCutlassGemmOverlay:
         torch = _torch()
         self.stats.record_miss(reason)
         self.last_kernel_path = "pytorch_fallback"
+        self.last_kernel_name = "pytorch_fallback"
+        self.last_tile = {"m": 0, "n": 0, "k": 0}
+        self.last_config = None
         self.last_fallback_reason = reason
         out = torch.matmul(a, b)
         if alpha != 1.0:
@@ -132,6 +148,9 @@ class ZCutlassGemmOverlay:
         torch = _torch()
         self.last_family = "unknown"
         self.last_kernel_path = "unknown"
+        self.last_kernel_name = "unknown"
+        self.last_tile = {"m": 0, "n": 0, "k": 0}
+        self.last_config = None
         self.last_fallback_reason = None
         if not self.enable_zcutlass:
             return "zcutlass_disabled"
@@ -182,7 +201,17 @@ class ZCutlassGemmOverlay:
             return self._fallback(reason, a, b, c, bias, alpha, beta)
         torch = _torch()
         self.stats.record_hit()
-        self.last_kernel_path = "zcutlass"
+        config = selected_gemm_config(a, b, c, bias, alpha, beta)
+        self.last_config = config
+        if config is not None:
+            self.last_family = str(config.get("shape_family", self.last_family))
+            self.last_kernel_path = str(config.get("kernel_path", "zcutlass"))
+            self.last_kernel_name = str(config.get("kernel_name", "unknown"))
+            self.last_tile = dict(config.get("tile", {"m": 0, "n": 0, "k": 0}))
+        else:
+            self.last_kernel_path = "zcutlass"
+            self.last_kernel_name = "unknown"
+            self.last_tile = {"m": 0, "n": 0, "k": 0}
         self.last_fallback_reason = None
         return torch.ops.zcutlass_torch.gemm(a, b, c, bias, float(alpha), float(beta))
 

@@ -207,8 +207,10 @@ python3 tools/benchmark_torch_overlay.py \
 ```
 
 Overlay JSONL records include `shape_family`, `route_family`, `kernel_path`,
-`fallback_reason`, `hit_count`, `miss_count`, `hit_rate`,
-`fallback_reasons`, `routing_policy_enabled`, and `promoted_families`.
+`kernel_name`, `selected_config`, `fallback_reason`, `hit_count`,
+`miss_count`, `hit_rate`, `fallback_reasons`, `routing_policy_enabled`, and
+`promoted_families`. `selected_config` is populated by the C++ manifest selector
+and includes the actual zcutlass kernel name and tile shape used by a hit.
 
 For a closer Linear-callsite proof, use the pre-transposed-weight harness. Stock
 PyTorch still receives `[N, K]` weights, while zcutlass receives the explicit

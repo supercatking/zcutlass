@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
-from zcutlass_torch import RoutingPolicy, ZCutlassGemmOverlay
+from zcutlass_torch import RoutingPolicy, ZCutlassGemmOverlay, selected_gemm_config
 
 
 @dataclass
@@ -97,6 +97,9 @@ class ZCutlassVllmLinearAdapter:
                 overlay.stats.record_miss("weight_not_pretransposed")
                 overlay.last_family = "unknown"
                 overlay.last_kernel_path = fallback_path_name
+                overlay.last_kernel_name = fallback_path_name
+                overlay.last_tile = {"m": 0, "n": 0, "k": 0}
+                overlay.last_config = None
                 overlay.last_fallback_reason = "weight_not_pretransposed"
                 out = fallback_fn()
             else:
@@ -104,11 +107,24 @@ class ZCutlassVllmLinearAdapter:
                 if reason is not None:
                     overlay.stats.record_miss(reason)
                     overlay.last_kernel_path = fallback_path_name
+                    overlay.last_kernel_name = fallback_path_name
+                    overlay.last_tile = {"m": 0, "n": 0, "k": 0}
+                    overlay.last_config = None
                     overlay.last_fallback_reason = reason
                     out = fallback_fn()
                 else:
                     overlay.stats.record_hit()
-                    overlay.last_kernel_path = "zcutlass"
+                    config = selected_gemm_config(x, weight, None, bias, 1.0, 0.0)
+                    overlay.last_config = config
+                    if config is not None:
+                        overlay.last_family = str(config.get("shape_family", overlay.last_family))
+                        overlay.last_kernel_path = str(config.get("kernel_path", "zcutlass"))
+                        overlay.last_kernel_name = str(config.get("kernel_name", "unknown"))
+                        overlay.last_tile = dict(config.get("tile", {"m": 0, "n": 0, "k": 0}))
+                    else:
+                        overlay.last_kernel_path = "zcutlass"
+                        overlay.last_kernel_name = "unknown"
+                        overlay.last_tile = {"m": 0, "n": 0, "k": 0}
                     overlay.last_fallback_reason = None
                     import torch
 
@@ -119,6 +135,9 @@ class ZCutlassVllmLinearAdapter:
         self.last_trace = {
             "family": overlay.last_family,
             "kernel_path": overlay.last_kernel_path,
+            "kernel_name": overlay.last_kernel_name,
+            "tile": overlay.last_tile,
+            "selected_config": overlay.last_config,
             "fallback_reason": overlay.last_fallback_reason,
             "hit_count": overlay.stats.hits,
             "miss_count": overlay.stats.misses,

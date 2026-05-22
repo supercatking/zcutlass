@@ -117,6 +117,8 @@ def run_shape(torch, overlay_cls, shape: Shape, args: argparse.Namespace) -> lis
 
     actual = overlay_fn()
     kernel_path = overlay.last_kernel_path
+    kernel_name = overlay.last_kernel_name
+    selected_config = overlay.last_config
     route_family = overlay.last_family
     fallback_reason = overlay.last_fallback_reason
     torch.testing.assert_close(actual, stock, rtol=args.rtol, atol=args.atol)
@@ -170,6 +172,8 @@ def run_shape(torch, overlay_cls, shape: Shape, args: argparse.Namespace) -> lis
                 **common_tags,
                 "route_family": route_family,
                 "kernel_path": kernel_path,
+                "kernel_name": kernel_name,
+                "selected_config": selected_config,
                 "fallback_reason": fallback_reason,
                 "hit_count": overlay.stats.hits,
                 "miss_count": overlay.stats.misses,

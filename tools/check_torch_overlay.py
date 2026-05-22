@@ -28,7 +28,7 @@ def main() -> int:
         print(f"SKIP: PyTorch is not installed: {exc}")
         return 1 if args.require_torch else 0
 
-    from zcutlass_torch import ZCutlassGemmOverlay, extension_available
+    from zcutlass_torch import ZCutlassGemmOverlay, extension_available, selected_gemm_config
 
     if not torch.cuda.is_available():
         print("SKIP: CUDA is not available through PyTorch")
@@ -45,6 +45,10 @@ def main() -> int:
     actual = overlay.gemm(a, b, bias=bias)
     expected = torch.matmul(a, b) + bias
     torch.testing.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
+    config = selected_gemm_config(a, b, bias=bias)
+    assert config is not None
+    assert overlay.last_kernel_name == config["kernel_name"]
+    assert overlay.last_tile == config["tile"]
 
     policy_overlay = ZCutlassGemmOverlay()
     fallback = policy_overlay.gemm(a, b, bias=bias)
@@ -54,6 +58,8 @@ def main() -> int:
     print(
         "PASS: "
         f"forced_hits={overlay.stats.hits} "
+        f"kernel={overlay.last_kernel_name} "
+        f"tile={overlay.last_tile} "
         f"policy_misses={policy_overlay.stats.misses} "
         f"policy_reasons={policy_overlay.stats.fallback_reasons}"
     )
