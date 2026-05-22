@@ -338,7 +338,8 @@ template <typename T,
           bool Experimental = false,
           int KGroup = 1,
           bool RestrictToFamily = false,
-          bool RequireNLeK = false>
+          bool RequireNLeK = false,
+          bool RequireNGtK = false>
 class WmmaGemmOperation final : public gemm_api::GemmOperation {
  public:
   constexpr WmmaGemmOperation(const char* name, gemm_api::ShapeFamily family)
@@ -396,6 +397,11 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
     }
     if constexpr (RequireNLeK) {
       if (args.problem.n > args.problem.k) {
+        return false;
+      }
+    }
+    if constexpr (RequireNGtK) {
+      if (args.problem.n <= args.problem.k) {
         return false;
       }
     }
@@ -512,6 +518,14 @@ void ensure_builtin_operations_registered() {
       f16_64x128x64_aligned_prefill_experimental(
           "zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_experimental",
           gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 64, 256, DType::F16, true, true, 1, true, false, true>
+      f16_64x256x16_aligned_prefill_n_gt_k_experimental(
+          "zcutlass_sm120_tensorop_f16_64x256x16_aligned_prefill_n_gt_k_experimental",
+          gemm_api::ShapeFamily::Prefill);
+  static const WmmaGemmOperation<half, 64, 256, DType::F16, true, true, 2, true, false, true>
+      f16_64x256x32_aligned_prefill_n_gt_k_experimental(
+          "zcutlass_sm120_tensorop_f16_64x256x32_aligned_prefill_n_gt_k_experimental",
+          gemm_api::ShapeFamily::Prefill);
   static const WmmaGemmOperation<half, 32, 128, DType::F16, false> f16_32x128(
       "zcutlass_sm120_tensorop_f16_32x128x16", gemm_api::ShapeFamily::Decode);
   static const WmmaGemmOperation<half, 32, 64, DType::F16, false> f16_32x64(
@@ -531,6 +545,8 @@ void ensure_builtin_operations_registered() {
 
   auto& manifest = gemm_api::global_manifest();
   manifest.append(&f16_64x128x64_aligned_prefill_n_le_k);
+  manifest.append(&f16_64x256x16_aligned_prefill_n_gt_k_experimental);
+  manifest.append(&f16_64x256x32_aligned_prefill_n_gt_k_experimental);
   manifest.append(&f16_64x128x64_aligned_prefill_experimental);
   manifest.append(&f16_128x128_aligned_prefill_experimental);
   manifest.append(&f16_64x128x32_aligned_prefill);

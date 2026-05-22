@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <iostream>
 #include <random>
@@ -215,6 +216,26 @@ void expect_path(const std::string& name,
               << path << std::endl;
     std::exit(1);
   }
+}
+
+void set_experimental_kernel_filter(const char* filter) {
+#if defined(_WIN32)
+  if (filter == nullptr) {
+    _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNELS", "");
+    _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNEL", "");
+  } else {
+    _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNELS", "1");
+    _putenv_s("ZCUTLASS_EXPERIMENTAL_KERNEL", filter);
+  }
+#else
+  if (filter == nullptr) {
+    unsetenv("ZCUTLASS_EXPERIMENTAL_KERNELS");
+    unsetenv("ZCUTLASS_EXPERIMENTAL_KERNEL");
+  } else {
+    setenv("ZCUTLASS_EXPERIMENTAL_KERNELS", "1", 1);
+    setenv("ZCUTLASS_EXPERIMENTAL_KERNEL", filter, 1);
+  }
+#endif
 }
 
 template <typename T>
@@ -572,6 +593,17 @@ void run_dispatch_tests() {
   desc.ldd = 16384;
   expect_kernel_contains("LLM prefill N>K dispatch", desc, "64x128x32_aligned_prefill");
   expect_kernel_not_contains("LLM prefill N>K dispatch", desc, "64x128x64");
+  expect_kernel_not_contains("LLM prefill N>K default dispatch", desc, "64x256x32");
+
+  set_experimental_kernel_filter("64x256x32");
+  expect_kernel_contains("LLM prefill N>K experimental dispatch", desc, "64x256x32");
+  expect_path("LLM prefill N>K experimental dispatch", desc, "experimental_fast");
+  set_experimental_kernel_filter(nullptr);
+
+  set_experimental_kernel_filter("64x256x16");
+  expect_kernel_contains("LLM prefill N>K KGroup1 experimental dispatch", desc, "64x256x16");
+  expect_path("LLM prefill N>K KGroup1 experimental dispatch", desc, "experimental_fast");
+  set_experimental_kernel_filter(nullptr);
 
   desc.n = 4096;
   desc.k = 16384;
