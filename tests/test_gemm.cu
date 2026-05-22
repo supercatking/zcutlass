@@ -563,6 +563,7 @@ void run_dispatch_tests() {
 
   desc.m = 4096;
   expect_family("large canonical dispatch", desc, "large");
+  expect_path("large canonical dispatch", desc, "fast");
 
   desc.alpha = 0.5f;
   expect_kernel_contains("alpha f16 dispatch", desc, "64x128x16");
