@@ -19,6 +19,9 @@ external baselines. CUTLASS source is not vendored into this repository.
 - [CUTLASS alignment roadmap](docs/cutlass-alignment-roadmap.md)
 - [Measurement workflow](docs/measurement-workflow.md)
 - [Development workflow](docs/development-workflow.md)
+- [v1.5 long-term execution plan](docs/v15-long-term-execution-plan.md)
+- [Explicit-MMA prefill design notes](docs/explicit-mma-prefill-design.md)
+- [vLLM real model overlay plan](docs/vllm-real-model-overlay-plan.md)
 - [Agent operating notes](AGENTS.md)
 - [LLM kernel family plan](docs/llm-kernel-family-plan.md)
 - [Kernel optimization notes](docs/kernel-optimization-notes.md)
@@ -73,6 +76,12 @@ Kernel growth for v1.5 must follow CUTLASS-style tile families and
 shape-bucket dispatch. Do not add many full-shape-specific kernels for individual
 LLM dimensions; add reusable tile/pipeline/epilogue families and route nearby
 problem shapes into buckets that can be measured and maintained.
+
+The next major kernel generation is explicit MMA with a register epilogue for
+aligned LLM prefill GEMM. Current WMMA kernels remain the correctness and
+fallback baseline, but WMMA accumulator storage forces an FP32 shared-memory
+spill before FP16/BF16 output conversion. The v1.5 performance path should move
+that epilogue into registers before attempting broad framework promotion.
 
 ## v1.5 Product Validation Path
 

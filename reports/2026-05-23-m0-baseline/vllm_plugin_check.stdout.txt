@@ -1,0 +1,1 @@
+PASS: zcutlass_vllm import/register ok; entry_point_installed=True; vllm=installed

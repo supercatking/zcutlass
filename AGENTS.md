@@ -18,6 +18,9 @@ unsupported or non-profitable path must have an observable fallback.
 - Do not create many full-shape-specific kernels for individual LLM dimensions.
 - Prefer CUTLASS-style tile families with explicit tile shape, pipeline depth,
   epilogue, and alignment choices.
+- Treat explicit MMA plus register epilogue as the next performance path.
+  Current WMMA kernels are the correctness/fallback baseline, not the long-term
+  ceiling for v1.5.
 - Dispatch through shape buckets that map nearby problem sizes to reusable tile
   families.
 - Keep fallback coverage broad enough that unsupported or off-bucket row-major
@@ -41,3 +44,6 @@ unsupported or non-profitable path must have an observable fallback.
 - Framework integration changes must not use `LD_PRELOAD` or global cuBLAS
   interception as the default path. Prefer explicit custom op or framework
   adapter integration.
+- v1.5 commercial value requires at least one real small-model vLLM serving
+  workload to improve TTFT or TPOT without p95/p99 regression. LinearMethod and
+  microbenchmark wins are necessary evidence, not the final product gate.

@@ -1,0 +1,7 @@
+smoke_decode f16 m=8 n=512 k=512 stock=0.0109 ms overlay=0.0119 ms speedup=0.922x hit_rate=0.00 kernel=vllm_unquantized_fallback
+smoke_prefill f16 m=128 n=4096 k=1024 stock=0.0228 ms overlay=0.0756 ms speedup=0.301x hit_rate=1.00 kernel=zcutlass_sm120_tensorop_f16_64x128x32_aligned_prefill
+smoke_prefill_bf16_target f16 m=128 n=4096 k=4096 stock=0.0583 ms overlay=0.2905 ms speedup=0.201x hit_rate=1.00 kernel=zcutlass_sm120_tensorop_f16_64x128x64_aligned_prefill_n_le_k
+smoke_decode bf16 m=8 n=512 k=512 stock=0.0113 ms overlay=0.0188 ms speedup=0.600x hit_rate=0.00 kernel=vllm_unquantized_fallback
+smoke_prefill bf16 m=128 n=4096 k=1024 stock=0.0299 ms overlay=0.0743 ms speedup=0.402x hit_rate=1.00 kernel=zcutlass_sm120_tensorop_bf16_64x128x32_aligned_prefill
+smoke_prefill_bf16_target bf16 m=128 n=4096 k=4096 stock=0.0629 ms overlay=0.2953 ms speedup=0.213x hit_rate=1.00 kernel=zcutlass_sm120_tensorop_bf16_64x128x32_aligned_prefill
+wrote /home/zyz/zcutlass/reports/2026-05-23-m0-baseline/vllm-linear-method-smoke.jsonl

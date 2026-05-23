@@ -1,0 +1,1 @@
+PASS: forced_hits=1 kernel=zcutlass_sm120_tensorop_f16_64x128x16 tile={'m': 64, 'n': 128, 'k': 16} policy_misses=1 policy_reasons={'shape_not_target_bucket': 1}

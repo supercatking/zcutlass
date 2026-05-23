@@ -17,6 +17,21 @@ python3 tools/summarize_measurements.py build/measurement.jsonl
 python3 tools/visualize_gemm_comparison.py --suite smoke --dtype f16 --cutlass-jsonl build/cutlass_baseline.jsonl --output build/gemm_comparison.html
 ```
 
+For the v1.5 M0 freeze, prefer the one-command baseline runner. It records
+build/test status, the `llm-v1.5` zcutlass/cuBLAS benchmark, vLLM plugin checks,
+and vLLM LinearMethod smoke metrics into a dated report directory:
+
+```bash
+python3 tools/run_m0_baseline.py \
+  --warmup 3 \
+  --iterations 10 \
+  --continue-on-error
+```
+
+The runner writes `metadata.json`, command stdout/stderr logs, kernel JSONL,
+vLLM LinearMethod JSONL, and `m0-baseline.md` under
+`reports/YYYY-MM-DD-m0-baseline/`.
+
 To run against a locally built official NVIDIA CUTLASS profiler:
 
 ```bash
