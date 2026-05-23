@@ -13,9 +13,14 @@ namespace {
 
 constexpr int kBlockM = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockM;
 constexpr int kBlockN = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockN;
+constexpr int kBlockN64Tile = 64;
 constexpr int kBlockK = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockK;
+constexpr int kBlockK128 = 128;
 constexpr int kAStride = gemm_sm120::Sm120MmaPrefill64x128x64Config::kAStride;
 constexpr int kBStride = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBStride;
+constexpr int kAStrideK128 = kBlockK128 + gemm_sm120::Sm120MmaPrefill64x128x64Config::kSmemSkewA;
+constexpr int kBStrideK128 = kBlockN + gemm_sm120::Sm120MmaPrefill64x128x64Config::kSmemSkewB;
+constexpr int kBStrideN64K128 = kBlockN64Tile + gemm_sm120::Sm120MmaPrefill64x128x64Config::kSmemSkewB;
 constexpr int kWarpSize = 32;
 constexpr int kWarpTileM = 16;
 constexpr int kWarpTileN = 16;
@@ -27,14 +32,23 @@ constexpr int kWarpTileN32 = 32;
 constexpr int kWarpTilesN32 = kBlockN / kWarpTileN32;
 constexpr int kWarpsPerBlockN32 = kWarpTilesM * kWarpTilesN32;
 constexpr int kThreadsPerBlockN32 = kWarpsPerBlockN32 * kWarpSize;
+constexpr int kWarpTileM32 = 32;
+constexpr int kWarpTilesM32 = kBlockM / kWarpTileM32;
+constexpr int kWarpsPerBlockM32N32 = kWarpTilesM32 * kWarpTilesN32;
+constexpr int kThreadsPerBlockM32N32 = kWarpsPerBlockM32N32 * kWarpSize;
 constexpr int kWarpTileN64 = 64;
 constexpr int kWarpTilesN64 = kBlockN / kWarpTileN64;
 constexpr int kWarpsPerBlockN64 = kWarpTilesM * kWarpTilesN64;
 constexpr int kThreadsPerBlockN64 = kWarpsPerBlockN64 * kWarpSize;
+constexpr int kWarpTilesNBlock64 = kBlockN64Tile / kWarpTileN32;
+constexpr int kWarpsPerBlockBlockN64 = kWarpTilesM * kWarpTilesNBlock64;
+constexpr int kThreadsPerBlockBlockN64 = kWarpsPerBlockBlockN64 * kWarpSize;
 
 static_assert(kThreadsPerBlock == 1024, "The prototype uses one warp per 16x16 output tile");
 static_assert(kThreadsPerBlockN32 == 512, "The warp16x32 prototype uses 16 warps per CTA");
+static_assert(kThreadsPerBlockM32N32 == 256, "The warp32x32 prototype uses 8 warps per CTA");
 static_assert(kThreadsPerBlockN64 == 256, "The warp16x64 prototype uses 8 warps per CTA");
+static_assert(kThreadsPerBlockBlockN64 == 256, "The 64x64 warp16x32 prototype uses 8 warps per CTA");
 
 template <typename T>
 __device__ T from_float(float value);
@@ -95,6 +109,106 @@ __device__ void ldmatrix_x2_trans(unsigned out[2], unsigned address) {
       "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%0,%1}, [%2];\n"
       : "=r"(out[0]), "=r"(out[1])
       : "r"(address));
+}
+
+template <typename T>
+__device__ void copy_a_tile_padded_vec16(T* __restrict__ a_tile,
+                                         const T* __restrict__ A,
+                                         const GemmDesc& desc,
+                                         int64_t block_m,
+                                         int64_t k0,
+                                         int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockK % kElementsPerVec == 0, "A tile K must support 16B copies");
+  constexpr int kVecsPerRow = kBlockK / kElementsPerVec;
+  for (int vec = tid; vec < kBlockM * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    const auto* src =
+        reinterpret_cast<const uint4*>(A + (block_m + row) * desc.lda + k0 + col);
+    auto* dst = reinterpret_cast<uint4*>(a_tile + row * kAStride + col);
+    *dst = *src;
+  }
+}
+
+template <typename T>
+__device__ void copy_b_tile_padded_vec16(T* __restrict__ b_tile,
+                                         const T* __restrict__ B,
+                                         const GemmDesc& desc,
+                                         int64_t block_n,
+                                         int64_t k0,
+                                         int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockN % kElementsPerVec == 0, "B tile N must support 16B copies");
+  constexpr int kVecsPerRow = kBlockN / kElementsPerVec;
+  for (int vec = tid; vec < kBlockK * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    const auto* src =
+        reinterpret_cast<const uint4*>(B + (k0 + row) * desc.ldb + block_n + col);
+    auto* dst = reinterpret_cast<uint4*>(b_tile + row * kBStride + col);
+    *dst = *src;
+  }
+}
+
+template <typename T>
+__device__ void copy_a_tile_padded_vec16_k128(T* __restrict__ a_tile,
+                                              const T* __restrict__ A,
+                                              const GemmDesc& desc,
+                                              int64_t block_m,
+                                              int64_t k0,
+                                              int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockK128 % kElementsPerVec == 0, "A K128 tile must support 16B copies");
+  constexpr int kVecsPerRow = kBlockK128 / kElementsPerVec;
+  for (int vec = tid; vec < kBlockM * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    const auto* src =
+        reinterpret_cast<const uint4*>(A + (block_m + row) * desc.lda + k0 + col);
+    auto* dst = reinterpret_cast<uint4*>(a_tile + row * kAStrideK128 + col);
+    *dst = *src;
+  }
+}
+
+template <typename T>
+__device__ void copy_b_tile_padded_vec16_k128(T* __restrict__ b_tile,
+                                              const T* __restrict__ B,
+                                              const GemmDesc& desc,
+                                              int64_t block_n,
+                                              int64_t k0,
+                                              int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockN % kElementsPerVec == 0, "B tile N must support 16B copies");
+  constexpr int kVecsPerRow = kBlockN / kElementsPerVec;
+  for (int vec = tid; vec < kBlockK128 * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    const auto* src =
+        reinterpret_cast<const uint4*>(B + (k0 + row) * desc.ldb + block_n + col);
+    auto* dst = reinterpret_cast<uint4*>(b_tile + row * kBStrideK128 + col);
+    *dst = *src;
+  }
+}
+
+template <typename T>
+__device__ void copy_b_tile_padded_vec16_n64_k128(T* __restrict__ b_tile,
+                                                  const T* __restrict__ B,
+                                                  const GemmDesc& desc,
+                                                  int64_t block_n,
+                                                  int64_t k0,
+                                                  int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockN64Tile % kElementsPerVec == 0, "B N64 tile must support 16B copies");
+  constexpr int kVecsPerRow = kBlockN64Tile / kElementsPerVec;
+  for (int vec = tid; vec < kBlockK128 * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    const auto* src =
+        reinterpret_cast<const uint4*>(B + (k0 + row) * desc.ldb + block_n + col);
+    auto* dst = reinterpret_cast<uint4*>(b_tile + row * kBStrideN64K128 + col);
+    *dst = *src;
+  }
 }
 
 template <>
@@ -263,6 +377,57 @@ __device__ void load_b_fragment_ldmatrix(const T* __restrict__ b_tile,
   const int smem_row = k_stage + matrix * 8 + row;
   const int smem_col = n_base + n_offset;
   ldmatrix_x2_trans(b, shared_address(b_tile + smem_row * kBStride + smem_col));
+}
+
+template <typename T>
+__device__ void load_a_fragment_ldmatrix_k128(const T* __restrict__ a_tile,
+                                              int warp_m,
+                                              int k_stage,
+                                              int lane_id,
+                                              unsigned a[4]) {
+  const int matrix = lane_id >> 3;
+  const int row = lane_id & 7;
+  int smem_row = warp_m * kWarpTileM + row;
+  int smem_col = k_stage;
+  if (matrix == 1) {
+    smem_row += 8;
+  } else if (matrix == 2) {
+    smem_col += 8;
+  } else if (matrix == 3) {
+    smem_row += 8;
+    smem_col += 8;
+  }
+  ldmatrix_x4(a, shared_address(a_tile + smem_row * kAStrideK128 + smem_col));
+}
+
+template <typename T>
+__device__ void load_b_fragment_ldmatrix_k128(const T* __restrict__ b_tile,
+                                              int n_base,
+                                              int k_stage,
+                                              int n_offset,
+                                              int lane_id,
+                                              unsigned b[2]) {
+  const int lane = lane_id & 15;
+  const int matrix = lane >> 3;
+  const int row = lane & 7;
+  const int smem_row = k_stage + matrix * 8 + row;
+  const int smem_col = n_base + n_offset;
+  ldmatrix_x2_trans(b, shared_address(b_tile + smem_row * kBStrideK128 + smem_col));
+}
+
+template <typename T>
+__device__ void load_b_fragment_ldmatrix_n64_k128(const T* __restrict__ b_tile,
+                                                  int n_base,
+                                                  int k_stage,
+                                                  int n_offset,
+                                                  int lane_id,
+                                                  unsigned b[2]) {
+  const int lane = lane_id & 15;
+  const int matrix = lane >> 3;
+  const int row = lane & 7;
+  const int smem_row = k_stage + matrix * 8 + row;
+  const int smem_col = n_base + n_offset;
+  ldmatrix_x2_trans(b, shared_address(b_tile + smem_row * kBStrideN64K128 + smem_col));
 }
 
 template <typename T>
@@ -504,6 +669,308 @@ void sm120_mma_prefill_smem_ldm_warp16x32_64x128x64_kernel(GemmDesc desc,
 }
 
 template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockN32, 1)
+void sm120_mma_prefill_smem_ldm_vec_warp16x32_64x128x64_kernel(GemmDesc desc,
+                                                               const T* __restrict__ A,
+                                                               const T* __restrict__ B,
+                                                               T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStride;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesN32;
+  const int warp_n = warp_id % kWarpTilesN32;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc2[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc3[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK) {
+    copy_a_tile_padded_vec16(a_tile, A, desc, block_m, k0, tid);
+    copy_b_tile_padded_vec16(b_tile, B, desc, block_n, k0, tid);
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK; k_stage += 16) {
+      unsigned a[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix(a_tile, warp_m, k_stage, lane_id, a);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc0, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc1, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc2, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc3, a, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+  store_accumulator(D, desc, tile_m, tile_n, 16, lane_group, lane_in_group, acc2);
+  store_accumulator(D, desc, tile_m, tile_n, 24, lane_group, lane_in_group, acc3);
+}
+
+template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockN32, 2)
+void sm120_mma_prefill_smem_ldm_vec_lb2_warp16x32_64x128x64_kernel(GemmDesc desc,
+                                                                   const T* __restrict__ A,
+                                                                   const T* __restrict__ B,
+                                                                   T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStride;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesN32;
+  const int warp_n = warp_id % kWarpTilesN32;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc2[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc3[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK) {
+    copy_a_tile_padded_vec16(a_tile, A, desc, block_m, k0, tid);
+    copy_b_tile_padded_vec16(b_tile, B, desc, block_n, k0, tid);
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK; k_stage += 16) {
+      unsigned a[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix(a_tile, warp_m, k_stage, lane_id, a);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc0, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc1, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc2, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc3, a, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+  store_accumulator(D, desc, tile_m, tile_n, 16, lane_group, lane_in_group, acc2);
+  store_accumulator(D, desc, tile_m, tile_n, 24, lane_group, lane_in_group, acc3);
+}
+
+template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockN32, 1)
+void sm120_mma_prefill_smem_ldm_vec_warp16x32_64x128x128_kernel(GemmDesc desc,
+                                                                const T* __restrict__ A,
+                                                                const T* __restrict__ B,
+                                                                T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStrideK128;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesN32;
+  const int warp_n = warp_id % kWarpTilesN32;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc2[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc3[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK128) {
+    copy_a_tile_padded_vec16_k128(a_tile, A, desc, block_m, k0, tid);
+    copy_b_tile_padded_vec16_k128(b_tile, B, desc, block_n, k0, tid);
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK128; k_stage += 16) {
+      unsigned a[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix_k128(a_tile, warp_m, k_stage, lane_id, a);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc0, a, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc1, a, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc2, a, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc3, a, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+  store_accumulator(D, desc, tile_m, tile_n, 16, lane_group, lane_in_group, acc2);
+  store_accumulator(D, desc, tile_m, tile_n, 24, lane_group, lane_in_group, acc3);
+}
+
+template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockM32N32, 1)
+void sm120_mma_prefill_smem_ldm_vec_warp32x32_64x128x128_kernel(GemmDesc desc,
+                                                                const T* __restrict__ A,
+                                                                const T* __restrict__ B,
+                                                                T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStrideK128;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m32 = warp_id / kWarpTilesN32;
+  const int warp_n = warp_id % kWarpTilesN32;
+  const int warp_m0 = warp_m32 * 2;
+  const int warp_m1 = warp_m0 + 1;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m0 = block_m + warp_m32 * kWarpTileM32;
+  const int64_t tile_m1 = tile_m0 + kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc00[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc01[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc02[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc03[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc10[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc11[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc12[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc13[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK128) {
+    copy_a_tile_padded_vec16_k128(a_tile, A, desc, block_m, k0, tid);
+    copy_b_tile_padded_vec16_k128(b_tile, B, desc, block_n, k0, tid);
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK128; k_stage += 16) {
+      unsigned a0[4];
+      unsigned a1[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix_k128(a_tile, warp_m0, k_stage, lane_id, a0);
+      load_a_fragment_ldmatrix_k128(a_tile, warp_m1, k_stage, lane_id, a1);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc00, a0, b);
+      mma_m16n8k16<T>(acc10, a1, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc01, a0, b);
+      mma_m16n8k16<T>(acc11, a1, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc02, a0, b);
+      mma_m16n8k16<T>(acc12, a1, b);
+      load_b_fragment_ldmatrix_k128(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc03, a0, b);
+      mma_m16n8k16<T>(acc13, a1, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m0, tile_n, 0, lane_group, lane_in_group, acc00);
+  store_accumulator(D, desc, tile_m0, tile_n, 8, lane_group, lane_in_group, acc01);
+  store_accumulator(D, desc, tile_m0, tile_n, 16, lane_group, lane_in_group, acc02);
+  store_accumulator(D, desc, tile_m0, tile_n, 24, lane_group, lane_in_group, acc03);
+  store_accumulator(D, desc, tile_m1, tile_n, 0, lane_group, lane_in_group, acc10);
+  store_accumulator(D, desc, tile_m1, tile_n, 8, lane_group, lane_in_group, acc11);
+  store_accumulator(D, desc, tile_m1, tile_n, 16, lane_group, lane_in_group, acc12);
+  store_accumulator(D, desc, tile_m1, tile_n, 24, lane_group, lane_in_group, acc13);
+}
+
+template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockBlockN64, 1)
+void sm120_mma_prefill_smem_ldm_vec_warp16x32_64x64x128_kernel(GemmDesc desc,
+                                                               const T* __restrict__ A,
+                                                               const T* __restrict__ B,
+                                                               T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStrideK128;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesNBlock64;
+  const int warp_n = warp_id % kWarpTilesNBlock64;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN64Tile;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc2[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc3[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK128) {
+    copy_a_tile_padded_vec16_k128(a_tile, A, desc, block_m, k0, tid);
+    copy_b_tile_padded_vec16_n64_k128(b_tile, B, desc, block_n, k0, tid);
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK128; k_stage += 16) {
+      unsigned a[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix_k128(a_tile, warp_m, k_stage, lane_id, a);
+      load_b_fragment_ldmatrix_n64_k128(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc0, a, b);
+      load_b_fragment_ldmatrix_n64_k128(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc1, a, b);
+      load_b_fragment_ldmatrix_n64_k128(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc2, a, b);
+      load_b_fragment_ldmatrix_n64_k128(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc3, a, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+  store_accumulator(D, desc, tile_m, tile_n, 16, lane_group, lane_in_group, acc2);
+  store_accumulator(D, desc, tile_m, tile_n, 24, lane_group, lane_in_group, acc3);
+}
+
+template <typename T>
 __global__ __launch_bounds__(kThreadsPerBlockN64, 1)
 void sm120_mma_prefill_smem_warp16x64_64x128x64_kernel(GemmDesc desc,
                                                        const T* __restrict__ A,
@@ -661,6 +1128,112 @@ Status launch_sm120_mma_prefill_smem_ldm_warp16x32(const GemmDesc& desc,
 }
 
 template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_vec_warp16x32(const GemmDesc& desc,
+                                                       const void* A,
+                                                       const void* B,
+                                                       void* D) {
+  const dim3 block(kThreadsPerBlockN32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kAStride + kBlockK * kBStride) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_vec_warp16x32_64x128x64_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_vec_lb2_warp16x32(const GemmDesc& desc,
+                                                           const void* A,
+                                                           const void* B,
+                                                           void* D) {
+  const dim3 block(kThreadsPerBlockN32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kAStride + kBlockK * kBStride) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_vec_lb2_warp16x32_64x128x64_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_vec_warp16x32_k128(const GemmDesc& desc,
+                                                            const void* A,
+                                                            const void* B,
+                                                            void* D) {
+  const dim3 block(kThreadsPerBlockN32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kAStrideK128 + kBlockK128 * kBStrideK128) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_vec_warp16x32_64x128x128_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_vec_warp32x32_k128(const GemmDesc& desc,
+                                                            const void* A,
+                                                            const void* B,
+                                                            void* D) {
+  const dim3 block(kThreadsPerBlockM32N32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kAStrideK128 + kBlockK128 * kBStrideK128) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_vec_warp32x32_64x128x128_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_vec_warp16x32_n64_k128(const GemmDesc& desc,
+                                                                const void* A,
+                                                                const void* B,
+                                                                void* D) {
+  const dim3 block(kThreadsPerBlockBlockN64);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN64Tile),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes =
+      (kBlockM * kAStrideK128 + kBlockK128 * kBStrideN64K128) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_vec_warp16x32_64x64x128_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
 Status launch_sm120_mma_prefill_smem_warp16x64(const GemmDesc& desc,
                                                const void* A,
                                                const void* B,
@@ -697,8 +1270,33 @@ enum class Sm120MmaPrefillVariant {
   Shared16x16,
   Shared16x32,
   SharedLdm16x32,
+  SharedLdmVec16x32,
+  SharedLdmVecLb216x32,
+  SharedLdmVecK12816x32,
+  SharedLdmVecK12832x32,
+  SharedLdmVecN64K12816x32,
   Shared16x64,
 };
+
+template <Sm120MmaPrefillVariant Variant>
+constexpr int variant_tile_k() {
+  if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecK12816x32 ||
+                Variant == Sm120MmaPrefillVariant::SharedLdmVecK12832x32 ||
+                Variant == Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32) {
+    return kBlockK128;
+  } else {
+    return kBlockK;
+  }
+}
+
+template <Sm120MmaPrefillVariant Variant>
+constexpr int variant_tile_n() {
+  if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32) {
+    return kBlockN64Tile;
+  } else {
+    return kBlockN;
+  }
+}
 
 template <typename T, DType Type, Sm120MmaPrefillVariant Variant>
 class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
@@ -717,8 +1315,8 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
                      arch::ArchKind::Sm120,
                      arch::OpClass::TensorOp,
                      kBlockM,
-                     kBlockN,
-                     kBlockK,
+                     variant_tile_n<Variant>(),
+                     variant_tile_k<Variant>(),
                      gemm_api::ShapeFamily::Prefill,
                      true,
                      false,
@@ -746,8 +1344,8 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
         args.D.layout != layout::LayoutKind::RowMajor) {
       return false;
     }
-    if (args.problem.m % kBlockM != 0 || args.problem.n % kBlockN != 0 ||
-        args.problem.k % kBlockK != 0) {
+    if (args.problem.m % kBlockM != 0 || args.problem.n % variant_tile_n<Variant>() != 0 ||
+        args.problem.k % variant_tile_k<Variant>() != 0) {
       return false;
     }
     if (args.problem.m < 32 || args.problem.m > 256 || args.problem.n < 1024 ||
@@ -786,7 +1384,22 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
                   args.B.layout,
                   args.C.layout,
                   args.D.layout};
-    if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdm16x32) {
+    if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecLb216x32) {
+      return launch_sm120_mma_prefill_smem_ldm_vec_lb2_warp16x32<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecK12832x32) {
+      return launch_sm120_mma_prefill_smem_ldm_vec_warp32x32_k128<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32) {
+      return launch_sm120_mma_prefill_smem_ldm_vec_warp16x32_n64_k128<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecK12816x32) {
+      return launch_sm120_mma_prefill_smem_ldm_vec_warp16x32_k128<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVec16x32) {
+      return launch_sm120_mma_prefill_smem_ldm_vec_warp16x32<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdm16x32) {
       return launch_sm120_mma_prefill_smem_ldm_warp16x32<T>(
           desc, args.A.data, args.B.data, args.D.data);
     } else if constexpr (Variant == Sm120MmaPrefillVariant::Shared16x64) {
@@ -812,6 +1425,54 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
 namespace zcutlass::gemm_api {
 
 void append_sm120_mma_prefill_operations(Manifest& manifest) {
+  static const Sm120MmaPrefillOperation<half,
+                                        DType::F16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32>
+      f16_prefill_smem_ldm_vec_n64_k128_warp16x32(
+          "zcutlass_sm120_mma_f16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32>
+      bf16_prefill_smem_ldm_vec_n64_k128_warp16x32(
+          "zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half,
+                                        DType::F16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecLb216x32>
+      f16_prefill_smem_ldm_vec_lb2_warp16x32(
+          "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecLb216x32>
+      bf16_prefill_smem_ldm_vec_lb2_warp16x32(
+          "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half,
+                                        DType::F16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecK12832x32>
+      f16_prefill_smem_ldm_vec_k128_warp32x32(
+          "zcutlass_sm120_mma_f16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecK12832x32>
+      bf16_prefill_smem_ldm_vec_k128_warp32x32(
+          "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half,
+                                        DType::F16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecK12816x32>
+      f16_prefill_smem_ldm_vec_k128_warp16x32(
+          "zcutlass_sm120_mma_f16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmVecK12816x32>
+      bf16_prefill_smem_ldm_vec_k128_warp16x32(
+          "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half, DType::F16, Sm120MmaPrefillVariant::SharedLdmVec16x32>
+      f16_prefill_smem_ldm_vec_warp16x32(
+          "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmVec16x32>
+      bf16_prefill_smem_ldm_vec_warp16x32(
+          "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue");
   static const Sm120MmaPrefillOperation<half, DType::F16, Sm120MmaPrefillVariant::SharedLdm16x32>
       f16_prefill_smem_ldm_warp16x32(
           "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue");
@@ -851,6 +1512,16 @@ void append_sm120_mma_prefill_operations(Manifest& manifest) {
       bf16_prefill(
       "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue");
 
+  manifest.append(&f16_prefill_smem_ldm_vec_n64_k128_warp16x32);
+  manifest.append(&bf16_prefill_smem_ldm_vec_n64_k128_warp16x32);
+  manifest.append(&f16_prefill_smem_ldm_vec_lb2_warp16x32);
+  manifest.append(&bf16_prefill_smem_ldm_vec_lb2_warp16x32);
+  manifest.append(&f16_prefill_smem_ldm_vec_k128_warp32x32);
+  manifest.append(&bf16_prefill_smem_ldm_vec_k128_warp32x32);
+  manifest.append(&f16_prefill_smem_ldm_vec_k128_warp16x32);
+  manifest.append(&bf16_prefill_smem_ldm_vec_k128_warp16x32);
+  manifest.append(&f16_prefill_smem_ldm_vec_warp16x32);
+  manifest.append(&bf16_prefill_smem_ldm_vec_warp16x32);
   manifest.append(&f16_prefill_smem_ldm_warp16x32);
   manifest.append(&bf16_prefill_smem_ldm_warp16x32);
   manifest.append(&f16_prefill_smem_warp16x64);

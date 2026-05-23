@@ -21,11 +21,9 @@ Implemented zcutlass files:
   hit/miss counters.
 - `tools/check_vllm_oot_linear.py`: verifies plugin-driven OOT registration
   without loading a full model.
-
-Planned next zcutlass file:
-
 - `tools/check_vllm_real_model_overlay.py`: imports vLLM, loads the plugin, and
-  verifies that a small model can install the overlay and generate text.
+  optionally loads a user-specified model through the vLLM `LLM` API, generates
+  one deterministic prompt, and summarizes route-log hit/fallback rows.
 
 First layer classes to target:
 
@@ -137,10 +135,42 @@ source /home/zyz/vllm/.venv/bin/activate
 python3 tools/check_vllm_oot_linear.py --require-vllm
 ```
 
+Bounded real-model overlay smoke check:
+
+```bash
+cd /home/zyz/zcutlass
+source /home/zyz/vllm/.venv/bin/activate
+python3 tools/check_vllm_real_model_overlay.py \
+  --route-log /home/zyz/zcutlass/reports/vllm-real-model-smoke/routes.jsonl
+```
+
+Without `--model`, the runner stops after vLLM import, zcutlass plugin loading,
+and OOT Linear registration. This is useful as a cheap preflight in any vLLM
+environment.
+
+To run a cached or local model without triggering a heavyweight download:
+
+```bash
+python3 tools/check_vllm_real_model_overlay.py \
+  --model Qwen/Qwen2.5-1.5B-Instruct \
+  --dtype bfloat16 \
+  --max-model-len 512 \
+  --max-tokens 8 \
+  --route-log /home/zyz/zcutlass/reports/vllm-real-model-smoke/routes-qwen15.jsonl \
+  --require-vllm --require-model --require-route-rows
+```
+
+The runner sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` by default, so
+missing model files produce a clean skip unless `--require-model` is set. Use a
+local model path, a populated `HF_HOME`, or an explicit cache/download directory
+for the smoke step before full serving benchmarks.
+
 ## Acceptance
 
 - Stock serving baseline completes.
 - Overlay server starts only when explicitly enabled.
+- Bounded smoke runner reports plugin/OOT registration and route-log
+  hit/fallback counts before full serving runs.
 - Route log shows real model Linear callsites with hit/fallback rows.
 - Unsupported quantized/non-unquantized methods stay on stock vLLM.
 - No vLLM source checkout edits are required.

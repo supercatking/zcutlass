@@ -106,6 +106,33 @@ The first slice should use PTX `mma.sync.aligned.m16n8k16` forms and explicitly
 validate the row-major B staging/`ldmatrix` layout, because incorrect lane
 mapping can produce plausible but scrambled tiles.
 
+## 2026-05-23 Iteration Evidence
+
+The latest M1 experiments keep the register epilogue and ldmatrix fragment
+mapping, then vary shared-memory staging, K tile depth, and warp output tile
+shape. All variants remain experimental-only and are selected only through
+`ZCUTLASS_EXPERIMENTAL_KERNELS` / `--experimental-kernel`.
+
+Measured on `128x4096x4096`:
+
+- `64x128x64 ldmatrix`, scalar global-to-shared staging: about `0.163 ms`.
+- `64x128x64 ldmatrix`, 16-byte vectorized staging: about `0.116 ms`.
+- `64x128x128 ldmatrix`, 16-byte vectorized staging: about `0.108-0.110 ms`.
+- `64x128x128 ldmatrix`, `warp32x32`: current best, about `0.102 ms` FP16
+  and `0.105 ms` BF16.
+- `64x64x128`: regresses, so increasing CTA count by shrinking N is not the
+  right prefill direction for this shape.
+- `launch_bounds(..., 2)`: reduces registers but introduces stack spill and
+  regresses.
+
+Current conclusion: vectorized global-to-shared staging, larger K tiles, and
+higher per-warp MMA density are effective. The best explicit-MMA path is now
+roughly `1.6x` faster than the first ldmatrix prototype, but still only about
+`0.52x-0.56x` of cuBLAS for canonical prefill. This is not promotable to
+default dispatch. The next kernel direction should be a deeper mainloop change:
+`cp.async`/double buffering or a more CUTLASS-like pipelined shared-memory
+layout, not smaller CTA tiles or forced register throttling.
+
 ## Implementation Direction
 
 - Keep existing WMMA code intact as fallback and baseline.

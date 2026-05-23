@@ -40,6 +40,20 @@ class Result:
     note: str = ""
 
 
+@dataclass(frozen=True)
+class ComparisonRow:
+    source: pathlib.Path
+    dtype: str
+    shape: str
+    kernel: str
+    tile: str
+    pipeline_stages: str
+    epilogue_kind: str
+    zcutlass_ms: float
+    cublas_ms: float
+    speedup_vs_cublas: float
+
+
 KERNEL_EXPERIMENTS = [
     KernelExperiment(
         "direct_f16",
@@ -88,6 +102,66 @@ KERNEL_EXPERIMENTS = [
         "bf16",
         "sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
         "explicit-mma-shared-smem-ldm-warp16x32-bf16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_warp16x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-warp16x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_warp16x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-warp16x32-bf16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_lb2_warp16x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-lb2-warp16x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_lb2_warp16x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-lb2-warp16x32-bf16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_k128_warp16x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-k128-warp16x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_k128_warp16x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-k128-warp16x32-bf16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_k128_warp32x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-k128-warp32x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_k128_warp32x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-k128-warp32x32-bf16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_n64_k128_warp16x32_f16",
+        "f16",
+        "sm120_mma_f16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-n64-k128-warp16x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_vec_n64_k128_warp16x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-vec-n64-k128-warp16x32-bf16.jsonl",
     ),
     KernelExperiment(
         "shared_smem_warp16x64_f16",
@@ -217,6 +291,161 @@ def speedups(records: list[dict]) -> dict[tuple, float]:
     return ratios
 
 
+def float_value(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def median_ms(record: dict) -> float | None:
+    return float_value(record.get("performance", {}).get("median_ms"))
+
+
+def shape_string(problem: dict) -> str:
+    dims = (problem.get("m"), problem.get("n"), problem.get("k"))
+    if any(dim is None for dim in dims):
+        return "-"
+    return "x".join(str(dim) for dim in dims)
+
+
+def tile_string(tags: dict) -> str:
+    dims = (tags.get("tile_m"), tags.get("tile_n"), tags.get("tile_k"))
+    if all(dim is not None for dim in dims):
+        return "x".join(str(dim) for dim in dims)
+    return str(tags.get("tile", "-") or "-")
+
+
+def markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def update_min(mapping: dict[tuple, float], key: tuple, value: float) -> None:
+    current = mapping.get(key)
+    if current is None or value < current:
+        mapping[key] = value
+
+
+def collect_comparison_rows(paths: list[pathlib.Path]) -> list[ComparisonRow]:
+    records_by_path = {path: load_jsonl(path) for path in sorted(paths) if path.is_file()}
+    cublas_by_path: dict[pathlib.Path, dict[tuple, float]] = {}
+    cublas_by_key: dict[tuple, float] = {}
+
+    for path, records in records_by_path.items():
+        path_cublas: dict[tuple, float] = {}
+        for record in records:
+            if record.get("provider") != "cublas":
+                continue
+            c_ms = median_ms(record)
+            if c_ms is None or c_ms <= 0:
+                continue
+            key = record_key(record)
+            update_min(path_cublas, key, c_ms)
+            update_min(cublas_by_key, key, c_ms)
+        cublas_by_path[path] = path_cublas
+
+    rows: list[ComparisonRow] = []
+    for path, records in records_by_path.items():
+        for record in records:
+            if record.get("provider") != "zcutlass":
+                continue
+            if record.get("status", "success") != "success":
+                continue
+            z_ms = median_ms(record)
+            if z_ms is None or z_ms <= 0:
+                continue
+
+            key = record_key(record)
+            c_ms = cublas_by_path.get(path, {}).get(key)
+            if c_ms is None:
+                c_ms = cublas_by_key.get(key)
+            if c_ms is None:
+                continue
+
+            problem = record.get("problem", {})
+            tags = record.get("tags", {})
+            rows.append(
+                ComparisonRow(
+                    source=path,
+                    dtype=str(problem.get("dtype", "unknown")),
+                    shape=shape_string(problem),
+                    kernel=str(record.get("kernel", "")),
+                    tile=tile_string(tags),
+                    pipeline_stages=str(tags.get("pipeline_stages", "-")),
+                    epilogue_kind=str(tags.get("epilogue_kind", "-")),
+                    zcutlass_ms=z_ms,
+                    cublas_ms=c_ms,
+                    speedup_vs_cublas=c_ms / z_ms,
+                )
+            )
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.zcutlass_ms,
+            -row.speedup_vs_cublas,
+            row.dtype,
+            row.kernel,
+            str(row.source),
+        ),
+    )
+
+
+def comparison_table_lines(
+    rows: list[ComparisonRow],
+    *,
+    title: str,
+    source: pathlib.Path | None = None,
+    root: pathlib.Path | None = None,
+) -> list[str]:
+    lines = [title, ""]
+    if source is not None:
+        source_label = relpath(source, root) if root is not None else source
+        lines.extend([f"_JSONL source: `{markdown_cell(source_label)}`_", ""])
+    if not rows:
+        lines.append("_No paired zcutlass/cuBLAS benchmark rows found in JSONL outputs._")
+        return lines
+
+    lines.extend(
+        [
+            "| Rank | File | DType | Shape | Kernel | Tile | Stages | Epilogue | zcutlass ms | cuBLAS ms | Speedup vs cuBLAS |",
+            "| ---: | --- | --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: |",
+        ]
+    )
+    for rank, row in enumerate(rows, start=1):
+        file_label = relpath(row.source, root) if root is not None else row.source.name
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(rank),
+                    f"`{markdown_cell(file_label)}`",
+                    markdown_cell(row.dtype),
+                    markdown_cell(row.shape),
+                    f"`{markdown_cell(row.kernel)}`",
+                    markdown_cell(row.tile),
+                    markdown_cell(row.pipeline_stages),
+                    markdown_cell(row.epilogue_kind),
+                    f"{row.zcutlass_ms:.4f}",
+                    f"{row.cublas_ms:.4f}",
+                    f"{row.speedup_vs_cublas:.3f}x",
+                ]
+            )
+            + " |"
+        )
+    return lines
+
+
+def comparison_summary_lines(report_dir: pathlib.Path, *, root: pathlib.Path | None = None) -> list[str]:
+    paths = sorted(report_dir.glob("*.jsonl")) if report_dir.exists() else []
+    return comparison_table_lines(
+        collect_comparison_rows(paths),
+        title="## Explicit-MMA Comparison Summary",
+        source=report_dir,
+        root=root,
+    )
+
+
 def kernel_summary_lines(kernel_outputs: list[tuple[str, pathlib.Path]]) -> list[str]:
     rows: list[str] = []
     for experiment, path in kernel_outputs:
@@ -338,7 +567,7 @@ def write_report(
     else:
         lines.append("All required M1 checks passed.")
 
-    for summary in (kernel_summary_lines(kernel_outputs), vllm_summary_lines(vllm_jsonl)):
+    for summary in (comparison_summary_lines(path.parent, root=root), vllm_summary_lines(vllm_jsonl)):
         if summary:
             lines.extend(["", *summary])
 
@@ -451,6 +680,13 @@ def main() -> int:
     parser.add_argument("--require-vllm", action="store_true")
     parser.add_argument("--skip-kernel-bench", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
+    parser.add_argument(
+        "--comparison-summary",
+        "--summary-only",
+        dest="comparison_summary",
+        action="store_true",
+        help="read JSONL files in --output-dir and print a ranked Markdown comparison without running benchmarks",
+    )
     args = parser.parse_args()
 
     if args.skip_vllm and args.require_vllm:
@@ -461,6 +697,11 @@ def main() -> int:
     output_dir = args.output_dir or root / "reports" / f"{today}-m1-explicit-mma"
     if not output_dir.is_absolute():
         output_dir = root / output_dir
+    if args.comparison_summary:
+        if not output_dir.exists():
+            parser.error(f"--comparison-summary requires an existing report directory: {output_dir}")
+        print("\n".join(comparison_summary_lines(output_dir, root=root)))
+        return 0
     output_dir.mkdir(parents=True, exist_ok=True)
 
     build_dir = args.build_dir if args.build_dir.is_absolute() else root / args.build_dir
