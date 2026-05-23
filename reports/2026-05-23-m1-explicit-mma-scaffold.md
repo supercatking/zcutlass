@@ -111,13 +111,31 @@ This is the first explicit-MMA variant to edge past the current default WMMA
 kernel on the FP16 canonical prefill shape, but it is still far from the
 `>=0.80x` cuBLAS/CUTLASS M2 promotion threshold. It should remain experimental.
 
+## Warp 16x64 Follow-Up
+
+A fourth experimental variant increases each warp output tile again, from
+`16x32` to `16x64`, reducing the CTA to 256 threads:
+
+- `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_warp16x64_reg_epilogue`
+- `zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue`
+
+Measured `128x4096x4096` results:
+
+| dtype | zcutlass ms | zcutlass TFLOP/s | cuBLAS ms | cuBLAS TFLOP/s |
+| --- | ---: | ---: | ---: | ---: |
+| f16 | 0.2690 | 15.9669 | 0.0563 | 76.3468 |
+| bf16 | 0.2678 | 16.0356 | 0.0555 | 77.4035 |
+
+This regresses versus `16x32`, so blindly expanding per-warp output is not the
+right next step. The current best experimental point is `16x32`.
+
 ## Next Step
 
 Upgrade the experimental operation in `gemm_sm120_mma_prefill.cu`:
 
 - scope: aligned prefill, FP16/BF16, `alpha=1`, `beta=0`, `bias=null`
-- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles and larger
-  per-warp output tiles
+- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles, starting from
+  the `16x32` warp tile shape
 - epilogue: keep register linear conversion to FP16/BF16
 - promotion gate: correctness, JSONL benchmark, Nsight summary, and explicit
   confirmation that non-target shapes remain on WMMA fallback.

@@ -84,7 +84,8 @@ Current prototype:
   Shared-memory staging improves the direct-global prototype, but scalar
   fragment loads and overly small warp output tiles remain too inefficient.
   A `16x32` warp tile improves the result enough to beat current WMMA on one
-  FP16 canonical prefill shape, but it remains far below cuBLAS.
+  FP16 canonical prefill shape, but it remains far below cuBLAS. A `16x64`
+  warp tile regresses, so `16x32` is the next baseline for ldmatrix work.
 
 Initial tile config:
 
