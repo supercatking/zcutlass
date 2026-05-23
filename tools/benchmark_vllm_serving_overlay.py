@@ -9,6 +9,7 @@ available. Model downloads are disabled by default.
 from __future__ import annotations
 
 import argparse
+import collections
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
@@ -346,6 +347,9 @@ def build_plan(args: argparse.Namespace, preset: ServingPreset, variant: str) ->
         "--result-filename",
         result_file.name,
     ]
+    client_tokenizer = args.tokenizer or args.model
+    if client_tokenizer:
+        client_argv.extend(["--tokenizer", client_tokenizer])
     client_argv = append_extra(client_argv, args.extra_bench_arg)
 
     server_command = shell_lines(
@@ -693,6 +697,56 @@ def parse_vllm_result(path: pathlib.Path) -> dict[str, Any]:
     return metrics
 
 
+def summarize_route_log(path: pathlib.Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"available": False}
+    if not path.exists():
+        return {"available": False, "route_log": str(path)}
+
+    route_counts: collections.Counter[str] = collections.Counter()
+    family_counts: collections.Counter[str] = collections.Counter()
+    fallback_reasons: collections.Counter[str] = collections.Counter()
+    kernels: collections.Counter[str] = collections.Counter()
+    shapes: collections.Counter[tuple[Any, Any, Any, Any]] = collections.Counter()
+    rows = 0
+    malformed = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                malformed += 1
+                continue
+            rows += 1
+            route = str(row.get("route") or "unknown")
+            family = str(row.get("shape_family") or "unknown")
+            route_counts[route] += 1
+            family_counts[family] += 1
+            if route == "fallback":
+                fallback_reasons[str(row.get("fallback_reason") or "unknown")] += 1
+            if route == "zcutlass":
+                kernels[str(row.get("kernel_name") or "unknown")] += 1
+                shapes[(row.get("m"), row.get("n"), row.get("k"), row.get("dtype"))] += 1
+
+    return {
+        "available": True,
+        "route_log": str(path),
+        "rows": rows,
+        "malformed_rows": malformed,
+        "routes": dict(route_counts),
+        "shape_families": dict(family_counts),
+        "fallback_reasons": dict(fallback_reasons),
+        "zcutlass_kernels": dict(kernels.most_common(20)),
+        "zcutlass_shapes": [
+            {"m": m, "n": n, "k": k, "dtype": dtype, "count": count}
+            for (m, n, k, dtype), count in shapes.most_common(20)
+        ],
+    }
+
+
 def build_record(
     *,
     args: argparse.Namespace,
@@ -702,6 +756,7 @@ def build_record(
     details: dict[str, Any],
 ) -> dict[str, Any]:
     metrics = details.get("metrics") or parse_vllm_result(plan.result_file)
+    route_summary = summarize_route_log(plan.route_log)
     return {
         "schema_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -734,6 +789,7 @@ def build_record(
             "client_log": str(plan.client_log),
         },
         "metrics": metrics,
+        "route_summary": route_summary,
         "details": details,
     }
 

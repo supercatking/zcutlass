@@ -256,6 +256,22 @@ Local RTX 5080 smoke evidence:
 - The current explicit-MMA kernel is still slower than cuBLAS on these hit
   shapes, so this is a routing proof, not a serving performance proof.
 
+The first bounded stock-vs-overlay serving smoke on 2026-05-23 exposed and
+fixed a harness issue: `vllm bench serve` must receive the local tokenizer path,
+not only the served-model alias. `tools/benchmark_vllm_serving_overlay.py` now
+adds `--tokenizer <model path>` by default when no explicit tokenizer is passed.
+
+The same smoke run completed with Qwen2.5-1.5B BF16, input length `384`, output
+length `8`, four prompts, request rate `1`, and max concurrency `1`. Stock vLLM
+was still faster:
+
+- stock: TTFT mean `115.99 ms`, TPOT mean `12.13 ms`, tokens/s `382.44`.
+- overlay: TTFT mean `138.94 ms`, TPOT mean `14.29 ms`, tokens/s `378.49`.
+- route log: `112` zcutlass hits and `3808` fallbacks.
+
+This confirms the serving measurement path is usable, but also confirms that
+the current kernel/hit-rate combination is not a product-value win.
+
 ## Acceptance
 
 - Stock serving baseline completes.
