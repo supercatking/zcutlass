@@ -129,13 +129,34 @@ Measured `128x4096x4096` results:
 This regresses versus `16x32`, so blindly expanding per-warp output is not the
 right next step. The current best experimental point is `16x32`.
 
+## ldmatrix 16x32 Follow-Up
+
+A fifth experimental variant keeps the `16x32` warp tile and replaces scalar
+shared-memory fragment loads with `ldmatrix`:
+
+- A: `ldmatrix.sync.aligned.m8n8.x4.shared.b16`
+- B: `ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16`
+- Shared layout: padded row-major A/B tiles.
+
+Measured `128x4096x4096` results:
+
+| dtype | zcutlass ms | zcutlass TFLOP/s | cuBLAS ms | cuBLAS TFLOP/s |
+| --- | ---: | ---: | ---: | ---: |
+| f16 | 0.1633 | 26.3069 | 0.0549 | 78.2611 |
+| bf16 | 0.1627 | 26.3948 | 0.0549 | 78.2611 |
+
+This is the best explicit-MMA result so far and is about `1.50x` faster than
+the scalar shared-memory `16x32` variant. It is still only about `0.34x` of
+cuBLAS on the canonical prefill shape, so it remains experimental and cannot be
+used for vLLM promotion.
+
 ## Next Step
 
 Upgrade the experimental operation in `gemm_sm120_mma_prefill.cu`:
 
 - scope: aligned prefill, FP16/BF16, `alpha=1`, `beta=0`, `bias=null`
-- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles, starting from
-  the `16x32` warp tile shape
+- mainloop: keep the `ldmatrix` 16x32 path and improve global-to-shared copy,
+  double buffering, shared-memory swizzle, and occupancy
 - epilogue: keep register linear conversion to FP16/BF16
 - promotion gate: correctness, JSONL benchmark, Nsight summary, and explicit
   confirmation that non-target shapes remain on WMMA fallback.

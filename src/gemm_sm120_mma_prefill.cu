@@ -14,6 +14,8 @@ namespace {
 constexpr int kBlockM = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockM;
 constexpr int kBlockN = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockN;
 constexpr int kBlockK = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBlockK;
+constexpr int kAStride = gemm_sm120::Sm120MmaPrefill64x128x64Config::kAStride;
+constexpr int kBStride = gemm_sm120::Sm120MmaPrefill64x128x64Config::kBStride;
 constexpr int kWarpSize = 32;
 constexpr int kWarpTileM = 16;
 constexpr int kWarpTileN = 16;
@@ -71,6 +73,28 @@ __device__ void mma_m16n8k16<half>(float acc[4], const unsigned a[4], const unsi
       "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};\n"
       : "+f"(acc[0]), "+f"(acc[1]), "+f"(acc[2]), "+f"(acc[3])
       : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+}
+
+__device__ unsigned shared_address(const void* ptr) {
+  unsigned long long shared_ptr = 0;
+  unsigned address = 0;
+  asm volatile("cvta.to.shared.u64 %0, %1;\n" : "=l"(shared_ptr) : "l"(ptr));
+  asm volatile("cvt.u32.u64 %0, %1;\n" : "=r"(address) : "l"(shared_ptr));
+  return address;
+}
+
+__device__ void ldmatrix_x4(unsigned out[4], unsigned address) {
+  asm volatile(
+      "ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n"
+      : "=r"(out[0]), "=r"(out[1]), "=r"(out[2]), "=r"(out[3])
+      : "r"(address));
+}
+
+__device__ void ldmatrix_x2_trans(unsigned out[2], unsigned address) {
+  asm volatile(
+      "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%0,%1}, [%2];\n"
+      : "=r"(out[0]), "=r"(out[1])
+      : "r"(address));
 }
 
 template <>
@@ -146,6 +170,27 @@ __device__ void load_a_fragment_smem(const T* __restrict__ a_tile,
 }
 
 template <typename T>
+__device__ void load_a_fragment_ldmatrix(const T* __restrict__ a_tile,
+                                         int warp_m,
+                                         int k_stage,
+                                         int lane_id,
+                                         unsigned a[4]) {
+  const int matrix = lane_id >> 3;
+  const int row = lane_id & 7;
+  int smem_row = warp_m * kWarpTileM + row;
+  int smem_col = k_stage;
+  if (matrix == 1) {
+    smem_row += 8;
+  } else if (matrix == 2) {
+    smem_col += 8;
+  } else if (matrix == 3) {
+    smem_row += 8;
+    smem_col += 8;
+  }
+  ldmatrix_x4(a, shared_address(a_tile + smem_row * kAStride + smem_col));
+}
+
+template <typename T>
 __device__ void load_b_fragment(const T* __restrict__ B,
                                 const GemmDesc& desc,
                                 int64_t tile_n,
@@ -203,6 +248,21 @@ __device__ void load_b_fragment_smem_base(const T* __restrict__ b_tile,
     const int col = n_base + n_offset + lane_group;
     b[reg] = pack_pair(b_tile[row0 * kBlockN + col], b_tile[row1 * kBlockN + col]);
   }
+}
+
+template <typename T>
+__device__ void load_b_fragment_ldmatrix(const T* __restrict__ b_tile,
+                                         int n_base,
+                                         int k_stage,
+                                         int n_offset,
+                                         int lane_id,
+                                         unsigned b[2]) {
+  const int lane = lane_id & 15;
+  const int matrix = lane >> 3;
+  const int row = lane & 7;
+  const int smem_row = k_stage + matrix * 8 + row;
+  const int smem_col = n_base + n_offset;
+  ldmatrix_x2_trans(b, shared_address(b_tile + smem_row * kBStride + smem_col));
 }
 
 template <typename T>
@@ -379,6 +439,71 @@ void sm120_mma_prefill_smem_warp16x32_64x128x64_kernel(GemmDesc desc,
 }
 
 template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockN32, 1)
+void sm120_mma_prefill_smem_ldm_warp16x32_64x128x64_kernel(GemmDesc desc,
+                                                           const T* __restrict__ A,
+                                                           const T* __restrict__ B,
+                                                           T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kAStride;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesN32;
+  const int warp_n = warp_id % kWarpTilesN32;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc2[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc3[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK) {
+    for (int idx = tid; idx < kBlockM * kBlockK; idx += blockDim.x) {
+      const int row = idx / kBlockK;
+      const int col = idx % kBlockK;
+      a_tile[row * kAStride + col] = A[(block_m + row) * desc.lda + k0 + col];
+    }
+    for (int idx = tid; idx < kBlockK * kBlockN; idx += blockDim.x) {
+      const int row = idx / kBlockN;
+      const int col = idx % kBlockN;
+      b_tile[row * kBStride + col] = B[(k0 + row) * desc.ldb + block_n + col];
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK; k_stage += 16) {
+      unsigned a[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix(a_tile, warp_m, k_stage, lane_id, a);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc0, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc1, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc2, a, b);
+      load_b_fragment_ldmatrix(b_tile, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc3, a, b);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+  store_accumulator(D, desc, tile_m, tile_n, 16, lane_group, lane_in_group, acc2);
+  store_accumulator(D, desc, tile_m, tile_n, 24, lane_group, lane_in_group, acc3);
+}
+
+template <typename T>
 __global__ __launch_bounds__(kThreadsPerBlockN64, 1)
 void sm120_mma_prefill_smem_warp16x64_64x128x64_kernel(GemmDesc desc,
                                                        const T* __restrict__ A,
@@ -515,6 +640,27 @@ Status launch_sm120_mma_prefill_smem_warp16x32(const GemmDesc& desc,
 }
 
 template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_warp16x32(const GemmDesc& desc,
+                                                   const void* A,
+                                                   const void* B,
+                                                   void* D) {
+  const dim3 block(kThreadsPerBlockN32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kAStride + kBlockK * kBStride) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_warp16x32_64x128x64_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
 Status launch_sm120_mma_prefill_smem_warp16x64(const GemmDesc& desc,
                                                const void* A,
                                                const void* B,
@@ -550,6 +696,7 @@ enum class Sm120MmaPrefillVariant {
   Direct,
   Shared16x16,
   Shared16x32,
+  SharedLdm16x32,
   Shared16x64,
 };
 
@@ -639,7 +786,10 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
                   args.B.layout,
                   args.C.layout,
                   args.D.layout};
-    if constexpr (Variant == Sm120MmaPrefillVariant::Shared16x64) {
+    if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdm16x32) {
+      return launch_sm120_mma_prefill_smem_ldm_warp16x32<T>(
+          desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::Shared16x64) {
       return launch_sm120_mma_prefill_smem_warp16x64<T>(
           desc, args.A.data, args.B.data, args.D.data);
     } else if constexpr (Variant == Sm120MmaPrefillVariant::Shared16x32) {
@@ -662,6 +812,14 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
 namespace zcutlass::gemm_api {
 
 void append_sm120_mma_prefill_operations(Manifest& manifest) {
+  static const Sm120MmaPrefillOperation<half, DType::F16, Sm120MmaPrefillVariant::SharedLdm16x32>
+      f16_prefill_smem_ldm_warp16x32(
+          "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdm16x32>
+      bf16_prefill_smem_ldm_warp16x32(
+          "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue");
   static const Sm120MmaPrefillOperation<half, DType::F16, Sm120MmaPrefillVariant::Shared16x64>
       f16_prefill_smem_warp16x64(
           "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_warp16x64_reg_epilogue");
@@ -693,6 +851,8 @@ void append_sm120_mma_prefill_operations(Manifest& manifest) {
       bf16_prefill(
       "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue");
 
+  manifest.append(&f16_prefill_smem_ldm_warp16x32);
+  manifest.append(&bf16_prefill_smem_ldm_warp16x32);
   manifest.append(&f16_prefill_smem_warp16x64);
   manifest.append(&bf16_prefill_smem_warp16x64);
   manifest.append(&f16_prefill_smem_warp16x32);

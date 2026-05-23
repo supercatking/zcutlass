@@ -78,6 +78,18 @@ KERNEL_EXPERIMENTS = [
         "explicit-mma-shared-smem-warp16x32-bf16.jsonl",
     ),
     KernelExperiment(
+        "shared_smem_ldm_warp16x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-warp16x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_warp16x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-warp16x32-bf16.jsonl",
+    ),
+    KernelExperiment(
         "shared_smem_warp16x64_f16",
         "f16",
         "sm120_mma_f16_64x128x64_prefill_smem_warp16x64_reg_epilogue",
