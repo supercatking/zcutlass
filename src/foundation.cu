@@ -122,6 +122,16 @@ const char* shape_family_name(ShapeFamily family) {
   return "unknown";
 }
 
+const char* epilogue_kind_name(EpilogueKind kind) {
+  switch (kind) {
+    case EpilogueKind::SharedAccumulator:
+      return "shared_accumulator";
+    case EpilogueKind::RegisterLinear:
+      return "register_linear";
+  }
+  return "unknown";
+}
+
 void Manifest::append(const GemmOperation* operation) {
   if (operation != nullptr && size_ < kMaxOperations) {
     operations_[size_++] = operation;

@@ -1,5 +1,7 @@
 #include "zcutlass/gemm.hpp"
 
+#include "gemm_sm120_mma_prefill.cuh"
+
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <mma.h>
@@ -362,7 +364,10 @@ class WmmaGemmOperation final : public gemm_api::GemmOperation {
                      AlignedNoBetaBias,
                      !AlignedNoBetaBias,
                      !AlignedNoBetaBias,
-                     Experimental} {}
+                     Experimental} {
+    description_.pipeline_stages = KGroup;
+    description_.epilogue = gemm_api::EpilogueKind::SharedAccumulator;
+  }
 
   const gemm_api::GemmOperationDescription& description() const override {
     return description_;
@@ -548,6 +553,7 @@ void ensure_builtin_operations_registered() {
       "zcutlass_sm120_tensorop_bf16_64x64x16", gemm_api::ShapeFamily::Fallback);
 
   auto& manifest = gemm_api::global_manifest();
+  gemm_api::append_sm120_mma_prefill_operations(manifest);
   manifest.append(&f16_64x128x64_aligned_prefill_n_le_k);
   manifest.append(&f16_64x256x16_aligned_prefill_n_gt_k_experimental);
   manifest.append(&f16_64x256x32_aligned_prefill_n_gt_k_experimental);
@@ -670,6 +676,16 @@ int selected_kernel_tile_n(const GemmDesc& desc) {
 int selected_kernel_tile_k(const GemmDesc& desc) {
   const auto* description = select_builtin_description(desc);
   return description != nullptr ? description->tile_k : 0;
+}
+
+int selected_kernel_pipeline_stages(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  return description != nullptr ? description->pipeline_stages : 0;
+}
+
+const char* selected_kernel_epilogue_kind(const GemmDesc& desc) {
+  const auto* description = select_builtin_description(desc);
+  return description != nullptr ? gemm_api::epilogue_kind_name(description->epilogue) : "none";
 }
 
 int registered_gemm_operation_count() {

@@ -19,6 +19,13 @@ enum class ShapeFamily {
 
 const char* shape_family_name(ShapeFamily family);
 
+enum class EpilogueKind {
+  SharedAccumulator,
+  RegisterLinear,
+};
+
+const char* epilogue_kind_name(EpilogueKind kind);
+
 struct GemmPreference {
   int alignment_a = 1;
   int alignment_b = 1;
@@ -46,6 +53,8 @@ struct GemmOperationDescription {
   bool supports_beta = true;
   bool supports_bias = true;
   bool experimental = false;
+  int pipeline_stages = 1;
+  EpilogueKind epilogue = EpilogueKind::SharedAccumulator;
 };
 
 class GemmOperation {

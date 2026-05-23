@@ -218,6 +218,28 @@ void expect_path(const std::string& name,
   }
 }
 
+void expect_pipeline(const std::string& name,
+                     const zcutlass::GemmDesc& desc,
+                     int expected) {
+  const int stages = zcutlass::selected_kernel_pipeline_stages(desc);
+  if (stages != expected) {
+    std::cerr << "Expected " << name << " pipeline stages " << expected << ", got "
+              << stages << std::endl;
+    std::exit(1);
+  }
+}
+
+void expect_epilogue(const std::string& name,
+                     const zcutlass::GemmDesc& desc,
+                     const std::string& expected) {
+  const std::string epilogue = zcutlass::selected_kernel_epilogue_kind(desc);
+  if (epilogue != expected) {
+    std::cerr << "Expected " << name << " epilogue '" << expected << "', got "
+              << epilogue << std::endl;
+    std::exit(1);
+  }
+}
+
 void set_experimental_kernel_filter(const char* filter) {
 #if defined(_WIN32)
   if (filter == nullptr) {
@@ -584,6 +606,8 @@ void run_dispatch_tests() {
   expect_kernel_not_contains("LLM prefill canonical dispatch", desc, "experimental");
   expect_family("LLM prefill canonical dispatch", desc, "prefill");
   expect_path("LLM prefill canonical dispatch", desc, "fast");
+  expect_pipeline("LLM prefill canonical dispatch", desc, 4);
+  expect_epilogue("LLM prefill canonical dispatch", desc, "shared_accumulator");
 
   desc.n = 16384;
   desc.k = 4096;
@@ -633,6 +657,8 @@ void run_dispatch_tests() {
   desc.d_type = zcutlass::DType::BF16;
   expect_kernel_contains("BF16 prefill default dispatch", desc, "bf16_64x128x32_aligned_prefill");
   expect_path("BF16 prefill default dispatch", desc, "fast");
+  expect_pipeline("BF16 prefill default dispatch", desc, 2);
+  expect_epilogue("BF16 prefill default dispatch", desc, "shared_accumulator");
 
   desc.a_type = zcutlass::DType::F16;
   desc.b_type = zcutlass::DType::F16;

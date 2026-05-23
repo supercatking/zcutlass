@@ -53,6 +53,7 @@ def extension_modules():
         sources=[
             str(ROOT / "python" / "zcutlass_torch" / "csrc" / "zcutlass_torch.cpp"),
             str(ROOT / "src" / "foundation.cu"),
+            str(ROOT / "src" / "gemm_sm120_mma_prefill.cu"),
             str(ROOT / "src" / "gemm.cu"),
         ],
         include_dirs=[str(ROOT / "include"), *nvidia_include_dirs],

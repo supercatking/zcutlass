@@ -62,6 +62,18 @@ Required metadata:
 
 The public `zcutlass::gemm` API should not change for M1.
 
+## Scaffold Status
+
+The M1 scaffold is now represented in code without changing dispatch behavior:
+
+- Manifest descriptions expose `pipeline_stages` and `epilogue_kind`.
+- Benchmark JSONL and PyTorch `selected_gemm_config()` report both fields.
+- `src/gemm_sm120_mma_prefill.cuh` and `.cu` define the explicit-MMA prefill
+  registration boundary.
+- The registration function is called before WMMA prefill entries, but currently
+  appends no operation. This keeps all existing correctness and benchmark
+  behavior stable until the first explicit-MMA kernel passes gates.
+
 Initial tile config:
 
 ```cpp
@@ -72,7 +84,7 @@ struct Sm120MmaPrefill64x128x64 {
   static constexpr int kWarpM = 32;
   static constexpr int kWarpN = 32;
   static constexpr int kWarps = 8;
-  static constexpr int kStages = 1;
+  static constexpr int kStages = 2;
 };
 ```
 

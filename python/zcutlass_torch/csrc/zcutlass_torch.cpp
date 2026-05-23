@@ -142,6 +142,8 @@ py::dict selected_gemm_config(torch::Tensor a,
   config["shape_family"] = zcutlass::selected_kernel_family(desc);
   config["kernel_path"] = zcutlass::selected_kernel_path(desc);
   config["tile"] = tile;
+  config["pipeline_stages"] = zcutlass::selected_kernel_pipeline_stages(desc);
+  config["epilogue_kind"] = zcutlass::selected_kernel_epilogue_kind(desc);
   config["registered_gemm_operations"] = zcutlass::registered_gemm_operation_count();
   return config;
 }

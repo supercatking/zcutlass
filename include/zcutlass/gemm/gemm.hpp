@@ -84,6 +84,8 @@ const char* selected_kernel_path(const GemmDesc& desc);
 int selected_kernel_tile_m(const GemmDesc& desc);
 int selected_kernel_tile_n(const GemmDesc& desc);
 int selected_kernel_tile_k(const GemmDesc& desc);
+int selected_kernel_pipeline_stages(const GemmDesc& desc);
+const char* selected_kernel_epilogue_kind(const GemmDesc& desc);
 int registered_gemm_operation_count();
 
 }  // namespace zcutlass

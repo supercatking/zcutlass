@@ -312,7 +312,9 @@ void emit_schema_record(std::ostream& out,
       << zcutlass::selected_kernel_path(desc) << "\",\"tile_m\":"
       << zcutlass::selected_kernel_tile_m(desc) << ",\"tile_n\":"
       << zcutlass::selected_kernel_tile_n(desc) << ",\"tile_k\":"
-      << zcutlass::selected_kernel_tile_k(desc) << ",\"experimental_kernels\":"
+      << zcutlass::selected_kernel_tile_k(desc) << ",\"pipeline_stages\":"
+      << zcutlass::selected_kernel_pipeline_stages(desc) << ",\"epilogue_kind\":\""
+      << zcutlass::selected_kernel_epilogue_kind(desc) << "\",\"experimental_kernels\":"
       << (options.experimental_kernels ? "true" : "false")
       << ",\"experimental_kernel_filter\":\"" << options.experimental_kernel << "\"}}"
       << std::endl;
@@ -432,6 +434,10 @@ void run_shape(const Shape& shape,
               << "\",\"tile_m\":" << zcutlass::selected_kernel_tile_m(desc)
               << ",\"tile_n\":" << zcutlass::selected_kernel_tile_n(desc)
               << ",\"tile_k\":" << zcutlass::selected_kernel_tile_k(desc)
+              << ",\"pipeline_stages\":"
+              << zcutlass::selected_kernel_pipeline_stages(desc)
+              << ",\"epilogue_kind\":\""
+              << zcutlass::selected_kernel_epilogue_kind(desc) << "\""
               << ",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
               << ",\"cublas_tflops\":" << blas_tflops << ",\"speedup\":" << speedup << "}"
               << std::endl;

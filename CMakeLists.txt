@@ -20,6 +20,7 @@ find_package(CUDAToolkit REQUIRED)
 
 add_library(zcutlass STATIC
   src/foundation.cu
+  src/gemm_sm120_mma_prefill.cu
   src/gemm.cu
 )
 
