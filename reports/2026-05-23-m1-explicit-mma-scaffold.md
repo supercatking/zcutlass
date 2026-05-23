@@ -150,6 +150,13 @@ the scalar shared-memory `16x32` variant. It is still only about `0.34x` of
 cuBLAS on the canonical prefill shape, so it remains experimental and cannot be
 used for vLLM promotion.
 
+vLLM LinearMethod smoke with the ldmatrix FP16 route:
+
+| case | stock ms | overlay ms | speedup | hit rate | kernel |
+| --- | ---: | ---: | ---: | ---: | --- |
+| smoke_prefill | 0.0229 | 0.0658 | 0.348x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue` |
+| smoke_prefill_bf16_target | 0.0810 | 0.2096 | 0.386x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue` |
+
 ## Next Step
 
 Upgrade the experimental operation in `gemm_sm120_mma_prefill.cu`:
