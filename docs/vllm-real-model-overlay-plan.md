@@ -13,12 +13,17 @@ current zcutlass wrapper only handles vLLM `UnquantizedLinearMethod`.
 
 Use vLLM out-of-tree linear layer registration and keep it env-gated.
 
-Likely zcutlass files:
+Implemented zcutlass files:
 
 - `python/zcutlass_vllm/oot_linear.py`: registers OOT replacements for selected
   vLLM Linear layer classes.
 - `python/zcutlass_vllm/route_logger.py`: JSONL route logger with per-layer
   hit/miss counters.
+- `tools/check_vllm_oot_linear.py`: verifies plugin-driven OOT registration
+  without loading a full model.
+
+Planned next zcutlass file:
+
 - `tools/check_vllm_real_model_overlay.py`: imports vLLM, loads the plugin, and
   verifies that a small model can install the overlay and generate text.
 
@@ -123,6 +128,14 @@ vllm serve "$MODEL" \
 
 Run the same benchmark with `--model qwen15-overlay` and
 `--result-filename overlay-prefill.json`.
+
+Registration smoke check:
+
+```bash
+cd /home/zyz/zcutlass
+source /home/zyz/vllm/.venv/bin/activate
+python3 tools/check_vllm_oot_linear.py --require-vllm
+```
 
 ## Acceptance
 

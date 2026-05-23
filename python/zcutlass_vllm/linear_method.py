@@ -39,6 +39,7 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
             materialize_inputs=materialize_inputs,
         )
         self.cache_transposed_weight = cache_transposed_weight
+        self.last_weight_cache = "unknown"
 
     @property
     def stats(self):
@@ -59,6 +60,7 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
     def _transposed_weight(self, layer):
         weight = layer.weight
         if not self.cache_transposed_weight:
+            self.last_weight_cache = "disabled"
             return weight.t().contiguous()
 
         signature = (
@@ -71,14 +73,16 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
         if cached is not None:
             cached_signature, cached_weight = cached
             if cached_signature == signature:
+                self.last_weight_cache = "hit"
                 return cached_weight
         weight_t = weight.t().contiguous()
         setattr(layer, "_zcutlass_weight_t_cache", (signature, weight_t))
+        self.last_weight_cache = "miss"
         return weight_t
 
     def apply(self, layer, x, bias=None):
         weight_t = self._transposed_weight(layer)
-        return self.adapter.run(
+        output = self.adapter.run(
             x,
             weight_t,
             bias,
@@ -86,6 +90,9 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
             fallback_fn=lambda: self.delegate.apply(layer, x, bias),
             fallback_path_name="vllm_unquantized_fallback",
         )
+        if self.adapter.last_trace is not None:
+            self.adapter.last_trace["weight_cache"] = self.last_weight_cache
+        return output
 
 
 def clear_zcutlass_weight_cache(layer) -> None:
