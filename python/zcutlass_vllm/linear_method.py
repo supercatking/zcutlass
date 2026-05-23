@@ -7,6 +7,7 @@ eligible for zcutlass experiments.
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional
 
 from .linear import ZCutlassVllmLinearAdapter
@@ -76,7 +77,38 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
             return ("shape_not_target_bucket", family)
         if family not in self.adapter.promoted_families:
             return ("family_not_promoted", family)
+        profit_policy_reason = self._profit_policy_reject_reason(layer, x, m, n, k, family)
+        if profit_policy_reason is not None:
+            return (profit_policy_reason, family)
         return None
+
+    def _profit_policy_reject_reason(self, layer, x, m: int, n: int, k: int, family: str) -> str | None:
+        """Reject vLLM routes outside the locally measured profitable subset."""
+
+        policy = os.environ.get("ZCUTLASS_VLLM_PROFIT_POLICY", "off").strip().lower()
+        if policy in ("", "0", "off", "none", "false", "disabled"):
+            return None
+        if policy in ("all", "experimental"):
+            return None
+        if policy != "measured":
+            return "profit_policy_unknown"
+
+        dtype = str(getattr(x, "dtype", "")).lower()
+        if dtype not in ("torch.float16", "float16", "f16", "half", "torch.half"):
+            return "profit_policy_dtype_not_promoted"
+        if family != "prefill":
+            return "profit_policy_family_not_promoted"
+        if not bool(getattr(layer, "bias", None) is not None):
+            return "profit_policy_bias_not_promoted"
+
+        prefix = str(getattr(layer, "prefix", "")).lower()
+        is_qkv = "qkv_proj" in prefix
+        if not is_qkv:
+            return "profit_policy_layer_not_promoted"
+
+        if m == 256 and n == 2048 and k == 1536:
+            return None
+        return "profit_policy_shape_not_promoted"
 
     def _transposed_weight(self, layer):
         weight = layer.weight

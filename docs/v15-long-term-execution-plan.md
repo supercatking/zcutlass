@@ -24,17 +24,23 @@ Completed:
   benchmark harness.
 - FP16/BF16 prefill WMMA variants with selected-kernel telemetry.
 - BF16 prefill `64x128x32` promoted over the previous BF16 WMMA baseline.
+- First scoped serving proof: FP16 Qwen2.5-1.5B prefill-heavy vLLM workload
+  improves TTFT with zcutlass routed only for measured-profitable QKV chunks.
+  Evidence is recorded in
+  `reports/2026-05-23-vllm-fp16-qkv-serving-proof.md`.
 
 Remaining gaps:
 
-- Current kernels are still slower than stock vLLM/cuBLAS/CUTLASS at framework
-  level.
+- Current kernels are still slower than stock vLLM/cuBLAS/CUTLASS for BF16,
+  MLP up/down, no-bias O projection, and many off-bucket prefill shapes.
 - WMMA accumulator fragments cannot directly store FP16/BF16 outputs while
   keeping FP32 accumulation, so the current path spills accumulators through
   shared memory.
-- No true vLLM model execution path has been patched yet.
+- The real vLLM model path has only a narrow QKV FP16 serving win; broader
+  model callsites still need promotion evidence.
 - Decode small-M, MLP up/down, and large throughput paths need separate proof.
-- Serving metrics are not yet collected for stock vLLM vs zcutlass overlay.
+- Serving metrics are only positive for one FP16 prefill-heavy workload so far.
+- Decode-heavy and mixed serving wins are not yet established.
 
 ## Milestones
 

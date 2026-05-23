@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -37,6 +38,20 @@ def _matches_layer_filter(prefix: str) -> bool:
     return any(prefix.endswith(token) or token in prefix for token in filters)
 
 
+def _skip_install_for_profit_policy(layer: Any) -> str | None:
+    policy = os.environ.get("ZCUTLASS_VLLM_PROFIT_POLICY", "off").strip().lower()
+    if policy != "measured":
+        return None
+    prefix = str(getattr(layer, "prefix", "")).lower()
+    if "qkv_proj" not in prefix:
+        return "profit_policy_layer_not_promoted"
+    weight = getattr(layer, "weight", None)
+    dtype = str(getattr(weight, "dtype", "")).lower()
+    if dtype not in ("torch.float16", "float16", "f16", "half", "torch.half"):
+        return "profit_policy_dtype_not_promoted"
+    return None
+
+
 class ZCutlassOotLinearMixin:
     """Mixin installed on selected vLLM Linear classes."""
 
@@ -49,6 +64,10 @@ class ZCutlassOotLinearMixin:
             return
         prefix = str(getattr(self, "prefix", ""))
         if not _matches_layer_filter(prefix):
+            return
+        skip_reason = _skip_install_for_profit_policy(self)
+        if skip_reason is not None:
+            self._zcutlass_install_error = skip_reason
             return
         self._zcutlass_target_layer = True
         try:

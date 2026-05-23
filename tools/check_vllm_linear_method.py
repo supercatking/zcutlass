@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 from typing import Any
@@ -49,14 +50,23 @@ def main() -> int:
     parser.add_argument("--dtype", choices=("f16", "bf16"), default="f16")
     parser.add_argument("--allow-family", action="append", default=[])
     parser.add_argument("--bias", action="store_true")
+    parser.add_argument("--layer-prefix", default="", help="Optional vLLM layer prefix for route policy probes.")
     parser.add_argument("--rtol", type=float, default=5.0e-2)
     parser.add_argument("--atol", type=float, default=5.0e-2)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--require-hit", action="store_true")
     parser.add_argument("--require-fallback", action="store_true")
+    parser.add_argument(
+        "--profit-policy",
+        choices=("off", "measured", "all", "experimental"),
+        help="Optional ZCUTLASS_VLLM_PROFIT_POLICY override for this probe.",
+    )
     parser.add_argument("--output", type=pathlib.Path)
     args = parser.parse_args()
+
+    if args.profit_policy:
+        os.environ["ZCUTLASS_VLLM_PROFIT_POLICY"] = args.profit_policy
 
     sys.path.insert(0, str(repo_root() / "python"))
 
@@ -85,6 +95,8 @@ def main() -> int:
         def __init__(self, linear_weight) -> None:
             super().__init__()
             self.weight = torch.nn.Parameter(linear_weight)
+            self.bias = bias
+            self.prefix = args.layer_prefix
             self.quant_method = UnquantizedLinearMethod()
 
         def forward(self, value, linear_bias=None):

@@ -38,6 +38,7 @@ OVERLAY_ENV_KEYS = [
     "ZCUTLASS_VLLM_ROUTE_LOG",
     "ZCUTLASS_VLLM_TRACE_CONFIG",
     "ZCUTLASS_VLLM_MODEL_ID",
+    "ZCUTLASS_VLLM_PROFIT_POLICY",
 ]
 
 
@@ -156,6 +157,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allow-families", default=DEFAULT_ALLOW_FAMILIES)
     parser.add_argument("--layer-filter", default=DEFAULT_LAYER_FILTER)
     parser.add_argument(
+        "--profit-policy",
+        default="measured",
+        choices=("measured", "off", "all", "experimental"),
+        help=(
+            "vLLM route profitability guard. The default measured policy only "
+            "routes locally measured profitable callsites and falls back otherwise."
+        ),
+    )
+    parser.add_argument(
         "--log-routes",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -259,6 +269,7 @@ def overlay_env(args: argparse.Namespace, route_log: pathlib.Path | None) -> dic
         "ZCUTLASS_VLLM_ALLOW_FAMILIES": args.allow_families,
         "ZCUTLASS_VLLM_LAYER_FILTER": args.layer_filter,
         "ZCUTLASS_VLLM_MODEL_ID": args.model,
+        "ZCUTLASS_VLLM_PROFIT_POLICY": args.profit_policy,
     }
     if route_log is not None:
         env["ZCUTLASS_VLLM_LOG_ROUTES"] = "1"
