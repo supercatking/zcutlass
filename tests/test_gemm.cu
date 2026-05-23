@@ -667,6 +667,11 @@ void run_dispatch_tests() {
   expect_epilogue("BF16 explicit-MMA prefill dispatch", desc, "register_linear");
   set_experimental_kernel_filter(nullptr);
 
+  set_experimental_kernel_filter("32x128x64");
+  expect_kernel_contains("BF16 explicit-MMA M32 prefill dispatch", desc, "32x128x64");
+  expect_path("BF16 explicit-MMA M32 prefill dispatch", desc, "experimental_fast");
+  set_experimental_kernel_filter(nullptr);
+
   desc.a_type = zcutlass::DType::F16;
   desc.b_type = zcutlass::DType::F16;
   desc.c_type = zcutlass::DType::F16;
@@ -742,6 +747,9 @@ int main() {
   set_experimental_kernel_filter("sm120_mma_f16");
   run_case<half>("f16 explicit-mma prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
   set_experimental_kernel_filter(nullptr);
+  set_experimental_kernel_filter("32x128x64");
+  run_case<half>("f16 explicit-mma m32 prefill smoke", handle, 32, 1024, 1024, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter(nullptr);
 
   run_case<__nv_bfloat16>("bf16 tiny padded bias", handle, 13, 19, 23, 1.0f, 0.25f, true, true);
   run_case<__nv_bfloat16>("bf16 16x16", handle, 16, 16, 16, 1.0f, 0.0f, false, false);
@@ -751,6 +759,9 @@ int main() {
   run_case<__nv_bfloat16>("bf16 llm-smoke", handle, 8, 256, 256, 1.0f, 0.0f, false, false);
   set_experimental_kernel_filter("sm120_mma_bf16");
   run_case<__nv_bfloat16>("bf16 explicit-mma prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter(nullptr);
+  set_experimental_kernel_filter("32x128x64");
+  run_case<__nv_bfloat16>("bf16 explicit-mma m32 prefill smoke", handle, 32, 1024, 1024, 1.0f, 0.0f, false, false);
   set_experimental_kernel_filter(nullptr);
 
   CHECK_CUBLAS(cublasDestroy(handle));

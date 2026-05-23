@@ -132,6 +132,12 @@ Measured on `128x4096x4096`:
   the RTX 5080 `101376` byte opt-in shared-memory limit, but regresses to about
   `0.128 ms`. The compact layout likely loses more to bank conflicts/occupancy
   than it gains from fewer K-loop iterations.
+- `32x128x64 cp.async double-buffer`, `warp32x32`: compiles and passes the
+  benchmark reference check, but does not improve the real Qwen2.5-1.5B
+  down-projection target. On `256x1536x8960` BF16 it measures about `0.193 ms`
+  versus `0.192 ms` for the current `64x128x64` cp.async path and about
+  `0.075-0.078 ms` for cuBLAS. Shrinking M to increase CTA count is therefore
+  not enough to close the down-projection gap.
 
 Current conclusion: vectorized global-to-shared staging, larger K tiles, and
 higher per-warp MMA density are effective. The first `cp.async` double-buffer
@@ -140,7 +146,7 @@ path is now roughly `1.7x` faster than the first ldmatrix prototype, but still
 only about `0.58x-0.62x` of cuBLAS for canonical prefill. This is not promotable
 to default dispatch. The next kernel direction should keep the pipelined
 mainloop and improve math density or reduce remaining synchronization/ldmatrix
-pressure, rather than changing only CTA N size or forcing register throttling.
+pressure, rather than changing only CTA shape or forcing register throttling.
 
 Real vLLM Qwen2.5-1.5B smoke results changed the near-term target shapes:
 
@@ -160,6 +166,9 @@ Microbenchmarks for the Qwen2.5-1.5B prefill hit shapes show the current K64
 - `256x1536x1536` BF16: about `0.61x` of cuBLAS.
 - `256x17920x1536` BF16: about `0.55x` of cuBLAS.
 - `256x1536x8960` BF16: about `0.39x` of cuBLAS.
+- The `32x128x64` cp.async probe remains in the manifest for exact-filter
+  experiments, but it is not promoted because it is at best roughly tied with
+  the `64x128x64` cp.async path on these Qwen hit shapes.
 
 This means vLLM routing is now observable and functional, but the kernel is not
 ready for an end-to-end performance claim.
