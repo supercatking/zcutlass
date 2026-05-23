@@ -76,12 +76,13 @@ The M1 scaffold is now represented in code without changing dispatch behavior:
 
 Current prototype:
 
-- direct global fragment loads.
+- direct global fragment loads plus a second shared-memory staging variant.
 - register epilogue.
 - FP16/BF16 aligned prefill.
 - gated by `ZCUTLASS_EXPERIMENTAL_KERNELS`.
-- correct under tests and compute-sanitizer, but not a promotion candidate
-  because strided B global loads leave it far behind cuBLAS.
+- correct under tests and compute-sanitizer, but not a promotion candidate.
+  Shared-memory staging improves the direct-global prototype, but scalar
+  fragment loads and the 1024-thread CTA remain too inefficient.
 
 Initial tile config:
 

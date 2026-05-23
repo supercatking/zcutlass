@@ -62,12 +62,40 @@ Conclusion: the next kernel step is not more direct-global tuning. It must add
 shared-memory staging plus `ldmatrix`/lane-swizzled loading so B loads are not
 serialized by strided global access.
 
+## Shared-Memory Staging Follow-Up
+
+A second experimental variant stages each `64x128x64` CTA tile through shared
+memory before feeding the same register-level `mma.sync` epilogue path:
+
+- `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue`
+- `zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue`
+
+Measured `128x4096x4096` results:
+
+| dtype | zcutlass ms | zcutlass TFLOP/s | cuBLAS ms | cuBLAS TFLOP/s |
+| --- | ---: | ---: | ---: | ---: |
+| f16 | 0.2712 | 15.8350 | 0.0544 | 78.9516 |
+| bf16 | 0.2713 | 15.8332 | 0.0555 | 77.3589 |
+
+This is a real improvement over direct-global fragment loads, but still slower
+than the current WMMA fallback for the same canonical shape. It confirms that
+data staging matters, while also showing that scalar shared-memory fragment
+loads are not enough. The next iteration must use `ldmatrix`-compatible shared
+layout and reduce the 1024-thread CTA shape.
+
+vLLM LinearMethod smoke with the shared-memory FP16 route:
+
+| case | stock ms | overlay ms | speedup | hit rate | kernel |
+| --- | ---: | ---: | ---: | ---: | --- |
+| smoke_prefill | 0.0246 | 0.0945 | 0.260x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue` |
+| smoke_prefill_bf16_target | 0.0586 | 0.3131 | 0.187x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue` |
+
 ## Next Step
 
 Upgrade the experimental operation in `gemm_sm120_mma_prefill.cu`:
 
 - scope: aligned prefill, FP16/BF16, `alpha=1`, `beta=0`, `bias=null`
-- mainloop: shared-memory staged A/B tiles with `ldmatrix` loads
+- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles
 - epilogue: keep register linear conversion to FP16/BF16
 - promotion gate: correctness, JSONL benchmark, Nsight summary, and explicit
   confirmation that non-target shapes remain on WMMA fallback.

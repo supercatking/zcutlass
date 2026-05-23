@@ -117,6 +117,25 @@ __device__ void load_a_fragment(const T* __restrict__ A,
 }
 
 template <typename T>
+__device__ void load_a_fragment_smem(const T* __restrict__ a_tile,
+                                     int warp_m,
+                                     int k_stage,
+                                     int lane_group,
+                                     int lane_in_group,
+                                     unsigned a[4]) {
+#pragma unroll
+  for (int reg = 0; reg < 4; ++reg) {
+    const int e0 = reg * 2;
+    const int e1 = e0 + 1;
+    const int row0 = warp_m * kWarpTileM + mma_a_row(lane_group, e0);
+    const int col0 = k_stage + mma_a_col(lane_in_group, e0);
+    const int row1 = warp_m * kWarpTileM + mma_a_row(lane_group, e1);
+    const int col1 = k_stage + mma_a_col(lane_in_group, e1);
+    a[reg] = pack_pair(a_tile[row0 * kBlockK + col0], a_tile[row1 * kBlockK + col1]);
+  }
+}
+
+template <typename T>
 __device__ void load_b_fragment(const T* __restrict__ B,
                                 const GemmDesc& desc,
                                 int64_t tile_n,
@@ -135,6 +154,25 @@ __device__ void load_b_fragment(const T* __restrict__ B,
     const T lo = B[(tile_k + row0) * desc.ldb + tile_n + n_offset + col];
     const T hi = B[(tile_k + row1) * desc.ldb + tile_n + n_offset + col];
     b[reg] = pack_pair(lo, hi);
+  }
+}
+
+template <typename T>
+__device__ void load_b_fragment_smem(const T* __restrict__ b_tile,
+                                     int warp_n,
+                                     int k_stage,
+                                     int n_offset,
+                                     int lane_group,
+                                     int lane_in_group,
+                                     unsigned b[2]) {
+#pragma unroll
+  for (int reg = 0; reg < 2; ++reg) {
+    const int e0 = reg * 2;
+    const int e1 = e0 + 1;
+    const int row0 = k_stage + mma_b_row(lane_in_group, e0);
+    const int row1 = k_stage + mma_b_row(lane_in_group, e1);
+    const int col = warp_n * kWarpTileN + n_offset + lane_group;
+    b[reg] = pack_pair(b_tile[row0 * kBlockN + col], b_tile[row1 * kBlockN + col]);
   }
 }
 
@@ -190,6 +228,63 @@ __global__ __launch_bounds__(kThreadsPerBlock, 1) void sm120_mma_prefill_64x128x
 }
 
 template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlock, 1) void sm120_mma_prefill_smem_64x128x64_kernel(
+    GemmDesc desc,
+    const T* __restrict__ A,
+    const T* __restrict__ B,
+    T* __restrict__ D) {
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* a_tile = reinterpret_cast<T*>(shared_storage);
+  T* b_tile = a_tile + kBlockM * kBlockK;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m = warp_id / kWarpTilesN;
+  const int warp_n = warp_id % kWarpTilesN;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN;
+  const int64_t tile_m = block_m + warp_m * kWarpTileM;
+  const int64_t tile_n = block_n + warp_n * kWarpTileN;
+
+  float acc0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK) {
+    for (int idx = tid; idx < kBlockM * kBlockK; idx += blockDim.x) {
+      const int row = idx / kBlockK;
+      const int col = idx % kBlockK;
+      a_tile[idx] = A[(block_m + row) * desc.lda + k0 + col];
+    }
+    for (int idx = tid; idx < kBlockK * kBlockN; idx += blockDim.x) {
+      const int row = idx / kBlockN;
+      const int col = idx % kBlockN;
+      b_tile[idx] = B[(k0 + row) * desc.ldb + block_n + col];
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK; k_stage += 16) {
+      unsigned a[4];
+      unsigned b0[2];
+      unsigned b1[2];
+      load_a_fragment_smem(a_tile, warp_m, k_stage, lane_group, lane_in_group, a);
+      load_b_fragment_smem(b_tile, warp_n, k_stage, 0, lane_group, lane_in_group, b0);
+      load_b_fragment_smem(b_tile, warp_n, k_stage, 8, lane_group, lane_in_group, b1);
+      mma_m16n8k16<T>(acc0, a, b0);
+      mma_m16n8k16<T>(acc1, a, b1);
+    }
+    __syncthreads();
+  }
+
+  store_accumulator(D, desc, tile_m, tile_n, 0, lane_group, lane_in_group, acc0);
+  store_accumulator(D, desc, tile_m, tile_n, 8, lane_group, lane_in_group, acc1);
+}
+
+template <typename T>
 Status launch_sm120_mma_prefill(const GemmDesc& desc,
                                 const void* A,
                                 const void* B,
@@ -198,6 +293,27 @@ Status launch_sm120_mma_prefill(const GemmDesc& desc,
   const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
                   static_cast<unsigned int>(desc.m / kBlockM));
   sm120_mma_prefill_64x128x64_kernel<T><<<grid, block, 0, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
+Status launch_sm120_mma_prefill_smem(const GemmDesc& desc,
+                                     const void* A,
+                                     const void* B,
+                                     void* D) {
+  const dim3 block(kThreadsPerBlock);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  const size_t shared_bytes = (kBlockM * kBlockK + kBlockK * kBlockN) * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_64x128x64_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
       desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
   return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
 }
@@ -213,7 +329,7 @@ bool experimental_kernel_filter_matches(const char* name) {
   return filter == nullptr || filter[0] == '\0' || std::strstr(name, filter) != nullptr;
 }
 
-template <typename T, DType Type>
+template <typename T, DType Type, bool UseSharedStaging>
 class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
  public:
   constexpr explicit Sm120MmaPrefillOperation(const char* name)
@@ -299,7 +415,11 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
                   args.B.layout,
                   args.C.layout,
                   args.D.layout};
-    return launch_sm120_mma_prefill<T>(desc, args.A.data, args.B.data, args.D.data);
+    if constexpr (UseSharedStaging) {
+      return launch_sm120_mma_prefill_smem<T>(desc, args.A.data, args.B.data, args.D.data);
+    } else {
+      return launch_sm120_mma_prefill<T>(desc, args.A.data, args.B.data, args.D.data);
+    }
   }
 
  private:
@@ -312,11 +432,17 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
 namespace zcutlass::gemm_api {
 
 void append_sm120_mma_prefill_operations(Manifest& manifest) {
-  static const Sm120MmaPrefillOperation<half, DType::F16> f16_prefill(
+  static const Sm120MmaPrefillOperation<half, DType::F16, true> f16_prefill_smem(
+      "zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16, DType::BF16, true> bf16_prefill_smem(
+      "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half, DType::F16, false> f16_prefill(
       "zcutlass_sm120_mma_f16_64x128x64_prefill_reg_epilogue");
-  static const Sm120MmaPrefillOperation<__nv_bfloat16, DType::BF16> bf16_prefill(
+  static const Sm120MmaPrefillOperation<__nv_bfloat16, DType::BF16, false> bf16_prefill(
       "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue");
 
+  manifest.append(&f16_prefill_smem);
+  manifest.append(&bf16_prefill_smem);
   manifest.append(&f16_prefill);
   manifest.append(&bf16_prefill);
 }
