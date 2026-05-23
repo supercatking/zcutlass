@@ -291,6 +291,15 @@ void emit_schema_record(std::ostream& out,
       options.beta,
       nullptr,
       nullptr};
+  const bool zcutlass_provider = std::string(provider) == "zcutlass";
+  const char* kernel_path = zcutlass_provider ? zcutlass::selected_kernel_path(desc) : "external";
+  const int tile_m = zcutlass_provider ? zcutlass::selected_kernel_tile_m(desc) : 0;
+  const int tile_n = zcutlass_provider ? zcutlass::selected_kernel_tile_n(desc) : 0;
+  const int tile_k = zcutlass_provider ? zcutlass::selected_kernel_tile_k(desc) : 0;
+  const int pipeline_stages =
+      zcutlass_provider ? zcutlass::selected_kernel_pipeline_stages(desc) : 0;
+  const char* epilogue_kind =
+      zcutlass_provider ? zcutlass::selected_kernel_epilogue_kind(desc) : "external";
   out << std::fixed << std::setprecision(4)
       << "{\"schema_version\":1"
       << ",\"problem\":{\"operation\":\"gemm\",\"m\":" << shape.m << ",\"n\":"
@@ -309,12 +318,12 @@ void emit_schema_record(std::ostream& out,
       << zcutlass::registered_gemm_operation_count() << "}"
       << ",\"tags\":{\"suite\":\"" << options.suite << "\",\"shape_family\":\""
       << zcutlass::selected_kernel_family(desc) << "\",\"kernel_path\":\""
-      << zcutlass::selected_kernel_path(desc) << "\",\"tile_m\":"
-      << zcutlass::selected_kernel_tile_m(desc) << ",\"tile_n\":"
-      << zcutlass::selected_kernel_tile_n(desc) << ",\"tile_k\":"
-      << zcutlass::selected_kernel_tile_k(desc) << ",\"pipeline_stages\":"
-      << zcutlass::selected_kernel_pipeline_stages(desc) << ",\"epilogue_kind\":\""
-      << zcutlass::selected_kernel_epilogue_kind(desc) << "\",\"experimental_kernels\":"
+      << kernel_path << "\",\"tile_m\":"
+      << tile_m << ",\"tile_n\":"
+      << tile_n << ",\"tile_k\":"
+      << tile_k << ",\"pipeline_stages\":"
+      << pipeline_stages << ",\"epilogue_kind\":\""
+      << epilogue_kind << "\",\"experimental_kernels\":"
       << (options.experimental_kernels ? "true" : "false")
       << ",\"experimental_kernel_filter\":\"" << options.experimental_kernel << "\"}}"
       << std::endl;
@@ -423,21 +432,28 @@ void run_shape(const Shape& shape,
     }
   }
   const double speedup = (z_ms > 0.0f && blas_ms > 0.0f) ? blas_ms / z_ms : 0.0;
+  const char* selected_kernel = zcutlass::selected_kernel_name(desc);
+  const char* selected_path = zcutlass::selected_kernel_path(desc);
+  const int selected_tile_m = zcutlass::selected_kernel_tile_m(desc);
+  const int selected_tile_n = zcutlass::selected_kernel_tile_n(desc);
+  const int selected_tile_k = zcutlass::selected_kernel_tile_k(desc);
+  const int selected_pipeline_stages = zcutlass::selected_kernel_pipeline_stages(desc);
+  const char* selected_epilogue_kind = zcutlass::selected_kernel_epilogue_kind(desc);
 
   if (options.json) {
     std::cout << std::fixed << std::setprecision(4)
               << "{\"m\":" << shape.m << ",\"n\":" << shape.n << ",\"k\":" << shape.k
               << ",\"dtype\":\"" << options.dtype << "\",\"zcutlass_ms\":" << z_ms
-              << ",\"kernel\":\"" << zcutlass::selected_kernel_name(desc)
+              << ",\"kernel\":\"" << selected_kernel
               << "\",\"shape_family\":\"" << zcutlass::selected_kernel_family(desc)
-              << "\",\"kernel_path\":\"" << zcutlass::selected_kernel_path(desc)
-              << "\",\"tile_m\":" << zcutlass::selected_kernel_tile_m(desc)
-              << ",\"tile_n\":" << zcutlass::selected_kernel_tile_n(desc)
-              << ",\"tile_k\":" << zcutlass::selected_kernel_tile_k(desc)
+              << "\",\"kernel_path\":\"" << selected_path
+              << "\",\"tile_m\":" << selected_tile_m
+              << ",\"tile_n\":" << selected_tile_n
+              << ",\"tile_k\":" << selected_tile_k
               << ",\"pipeline_stages\":"
-              << zcutlass::selected_kernel_pipeline_stages(desc)
+              << selected_pipeline_stages
               << ",\"epilogue_kind\":\""
-              << zcutlass::selected_kernel_epilogue_kind(desc) << "\""
+              << selected_epilogue_kind << "\""
               << ",\"cublas_ms\":" << blas_ms << ",\"zcutlass_tflops\":" << z_tflops
               << ",\"cublas_tflops\":" << blas_tflops << ",\"speedup\":" << speedup << "}"
               << std::endl;

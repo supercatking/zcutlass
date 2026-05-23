@@ -660,10 +660,24 @@ void run_dispatch_tests() {
   expect_pipeline("BF16 prefill default dispatch", desc, 2);
   expect_epilogue("BF16 prefill default dispatch", desc, "shared_accumulator");
 
+  set_experimental_kernel_filter("sm120_mma_bf16");
+  expect_kernel_contains("BF16 explicit-MMA prefill dispatch", desc, "sm120_mma_bf16");
+  expect_path("BF16 explicit-MMA prefill dispatch", desc, "experimental_fast");
+  expect_pipeline("BF16 explicit-MMA prefill dispatch", desc, 2);
+  expect_epilogue("BF16 explicit-MMA prefill dispatch", desc, "register_linear");
+  set_experimental_kernel_filter(nullptr);
+
   desc.a_type = zcutlass::DType::F16;
   desc.b_type = zcutlass::DType::F16;
   desc.c_type = zcutlass::DType::F16;
   desc.d_type = zcutlass::DType::F16;
+
+  set_experimental_kernel_filter("sm120_mma_f16");
+  expect_kernel_contains("F16 explicit-MMA prefill dispatch", desc, "sm120_mma_f16");
+  expect_path("F16 explicit-MMA prefill dispatch", desc, "experimental_fast");
+  expect_pipeline("F16 explicit-MMA prefill dispatch", desc, 2);
+  expect_epilogue("F16 explicit-MMA prefill dispatch", desc, "register_linear");
+  set_experimental_kernel_filter(nullptr);
 
   desc.m = 4096;
   desc.alpha = 0.5f;
@@ -725,6 +739,9 @@ int main() {
   run_case<half>("f16 ragged alpha no-bias padded A/D", handle, 31, 63, 17, -0.5f, 0.0f, false, 2, 0, 0, 9);
   run_case<half>("f16 ragged beta no-bias", handle, 47, 64, 33, 0.5f, -0.25f, false, false);
   run_case<half>("f16 llm-smoke", handle, 8, 256, 256, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter("sm120_mma_f16");
+  run_case<half>("f16 explicit-mma prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter(nullptr);
 
   run_case<__nv_bfloat16>("bf16 tiny padded bias", handle, 13, 19, 23, 1.0f, 0.25f, true, true);
   run_case<__nv_bfloat16>("bf16 16x16", handle, 16, 16, 16, 1.0f, 0.0f, false, false);
@@ -732,6 +749,9 @@ int main() {
   run_case<__nv_bfloat16>("bf16 ragged alpha no-bias padded B/C/D", handle, 29, 61, 15, -0.75f, 0.0f, false, 0, 4, 6, 10);
   run_case<__nv_bfloat16>("bf16 ragged beta no-bias", handle, 45, 64, 31, 0.5f, -0.25f, false, false);
   run_case<__nv_bfloat16>("bf16 llm-smoke", handle, 8, 256, 256, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter("sm120_mma_bf16");
+  run_case<__nv_bfloat16>("bf16 explicit-mma prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
+  set_experimental_kernel_filter(nullptr);
 
   CHECK_CUBLAS(cublasDestroy(handle));
   std::cout << "All zcutlass tests passed." << std::endl;

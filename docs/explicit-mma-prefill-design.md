@@ -71,8 +71,17 @@ The M1 scaffold is now represented in code without changing dispatch behavior:
 - `src/gemm_sm120_mma_prefill.cuh` and `.cu` define the explicit-MMA prefill
   registration boundary.
 - The registration function is called before WMMA prefill entries, but currently
-  appends no operation. This keeps all existing correctness and benchmark
-  behavior stable until the first explicit-MMA kernel passes gates.
+  appends only experimental operations. This keeps default correctness and
+  benchmark behavior stable until an explicit-MMA kernel passes promotion gates.
+
+Current prototype:
+
+- direct global fragment loads.
+- register epilogue.
+- FP16/BF16 aligned prefill.
+- gated by `ZCUTLASS_EXPERIMENTAL_KERNELS`.
+- correct under tests and compute-sanitizer, but not a promotion candidate
+  because strided B global loads leave it far behind cuBLAS.
 
 Initial tile config:
 
