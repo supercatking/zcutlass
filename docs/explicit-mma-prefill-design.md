@@ -116,6 +116,50 @@ mapping can produce plausible but scrambled tiles.
   epilogue.
 - Keep launch/dispatch selectable through the existing manifest.
 
+## Next `ldmatrix` Iteration
+
+Current measured variants show that `16x32` is the best scalar shared-memory
+warp tile, while `16x64` regresses. Use `16x32` as the baseline for the first
+`ldmatrix` implementation.
+
+Recommended shape:
+
+- CTA tile: `64x128x64`.
+- Warp tile: `16x32`.
+- CTA threads: `16 warps = 512 threads`.
+- Per warp per K16 step: one A `16x16`, four B `16x8`, four
+  `mma.sync.m16n8k16`.
+- Variant name:
+  `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue`
+  and BF16 equivalent.
+
+Initial shared layouts:
+
+- A shared layout: row-major `A_smem[M][K]` with `kAStride = 64 + 8`.
+- B shared layout: row-major `B_smem[K][N]` with `kBStride = 128 + 8`.
+- Approximate shared memory: `(64 * 72 + 64 * 136) * sizeof(T)`, about 26 KiB
+  for FP16/BF16.
+- Keep scalar global-to-shared copies for the first `ldmatrix` correctness
+  slice; vectorized copy or `cp.async` comes after fragment mapping is proven.
+
+Loader plan:
+
+- A: `ldmatrix.sync.aligned.m8n8.x4.shared.b16`, no `.trans`.
+- B: `ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16`, with B staged as
+  row-major `[K,N]`.
+- Convert shared pointers to 32-bit shared addresses in a small helper before
+  inline PTX.
+
+Risks:
+
+- B can pass rough visual checks while being lane-scrambled, so deterministic
+  tile tests must compare against the scalar shared loader.
+- `ldmatrix.x4` A register order must match the existing `mma.sync` operand
+  order.
+- BF16 uses the same b16 `ldmatrix` transport but must keep the BF16 MMA opcode.
+- Do not move the ldmatrix variant ahead of WMMA in default dispatch until
+  correctness, sanitizer, benchmark, and Nsight gates all pass.
+
 ## Evidence Required
 
 Correctness:
