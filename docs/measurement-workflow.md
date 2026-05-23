@@ -32,6 +32,25 @@ The runner writes `metadata.json`, command stdout/stderr logs, kernel JSONL,
 vLLM LinearMethod JSONL, and `m0-baseline.md` under
 `reports/YYYY-MM-DD-m0-baseline/`.
 
+For the M1 explicit-MMA reproducibility pass, use the matching runner. It builds,
+runs CTest, records direct and shared-memory explicit-MMA FP16/BF16 kernel
+benchmarks, optionally runs `compute-sanitizer`, and runs the vLLM LinearMethod
+smoke when `/home/zyz/vllm/.venv` is present:
+
+```bash
+python3 tools/run_m1_explicit_mma_experiments.py \
+  --warmup 3 \
+  --iterations 10 \
+  --continue-on-error
+```
+
+Outputs are written under `reports/YYYY-MM-DD-m1-explicit-mma/`, including
+per-step stdout/stderr logs, explicit-MMA JSONL files, `metadata.json`, optional
+`vllm-linear-method-smoke.jsonl`, and `m1-explicit-mma.md`. Add
+`--compute-sanitizer` for the small sanitizer sweep. If the vLLM smoke is a
+required gate, pass `--require-vllm`; otherwise the runner skips it cleanly when
+the venv is missing.
+
 To run against a locally built official NVIDIA CUTLASS profiler:
 
 ```bash
