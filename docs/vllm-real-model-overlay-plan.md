@@ -240,6 +240,22 @@ missing model files produce a clean skip unless `--require-model` is set. Use a
 local model path, a populated `HF_HOME`, or an explicit cache/download directory
 for the smoke step before full serving benchmarks.
 
+Local RTX 5080 smoke evidence:
+
+- `Qwen2.5-0.5B-Instruct` loads and generates, but all routes fall back because
+  hidden size `896` is outside the current v1.5 optimized bucket. This is a
+  correct fallback, not a plugin failure.
+- `Qwen2.5-1.5B-Instruct` loads and generates from
+  `/home/zyz/vLLM_deploy/localModels`. With `ZCUTLASS_EXPERIMENTAL_KERNEL=cpasync`
+  it records real model Linear callsites and produces both hits and fallbacks:
+  - `224` zcutlass prefill hits.
+  - `224` large-family warmup/profile fallbacks with reason
+    `family_not_promoted`.
+  - Hit shapes include `256x1536x1536`, `256x17920x1536`, and
+    `256x1536x8960`.
+- The current explicit-MMA kernel is still slower than cuBLAS on these hit
+  shapes, so this is a routing proof, not a serving performance proof.
+
 ## Acceptance
 
 - Stock serving baseline completes.

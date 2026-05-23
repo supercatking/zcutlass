@@ -128,6 +128,10 @@ Measured on `128x4096x4096`:
   regresses.
 - `64x128x64 cp.async double-buffer`, `warp32x32`: new best point, about
   `0.094 ms` FP16 and `0.095 ms` BF16 after removing local stack spill.
+- `64x128x128 cp.async double-buffer`, compact A/B shared strides: fits under
+  the RTX 5080 `101376` byte opt-in shared-memory limit, but regresses to about
+  `0.128 ms`. The compact layout likely loses more to bank conflicts/occupancy
+  than it gains from fewer K-loop iterations.
 
 Current conclusion: vectorized global-to-shared staging, larger K tiles, and
 higher per-warp MMA density are effective. The first `cp.async` double-buffer
@@ -137,6 +141,28 @@ only about `0.58x-0.62x` of cuBLAS for canonical prefill. This is not promotable
 to default dispatch. The next kernel direction should keep the pipelined
 mainloop and improve math density or reduce remaining synchronization/ldmatrix
 pressure, rather than changing only CTA N size or forcing register throttling.
+
+Real vLLM Qwen2.5-1.5B smoke results changed the near-term target shapes:
+
+- The 0.5B model has hidden size `896`; it correctly falls back because it is
+  outside the v1.5 optimized bucket.
+- The 1.5B model produces real prefill hits at:
+  - `256x1536x1536` for attention output.
+  - `256x17920x1536` for MLP gate/up projection.
+  - `256x1536x8960` for MLP down projection.
+- QKV `256x2048x1536` and smaller `M=44` cases currently use the WMMA fallback.
+- vLLM warmup/profile `M=8192` shapes are classified as `large` and remain
+  fallback by design until a separate large-throughput kernel is promoted.
+
+Microbenchmarks for the Qwen2.5-1.5B prefill hit shapes show the current K64
+`cp.async` kernel is still below cuBLAS:
+
+- `256x1536x1536` BF16: about `0.61x` of cuBLAS.
+- `256x17920x1536` BF16: about `0.55x` of cuBLAS.
+- `256x1536x8960` BF16: about `0.39x` of cuBLAS.
+
+This means vLLM routing is now observable and functional, but the kernel is not
+ready for an end-to-end performance claim.
 
 ## Implementation Direction
 

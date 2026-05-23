@@ -140,6 +140,18 @@ KERNEL_EXPERIMENTS = [
         "explicit-mma-shared-smem-ldm-cpasync-k64-warp32x32-bf16.jsonl",
     ),
     KernelExperiment(
+        "shared_smem_ldm_cpasync_k128_warp32x32_f16",
+        "f16",
+        "sm120_mma_f16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-cpasync-k128-warp32x32-f16.jsonl",
+    ),
+    KernelExperiment(
+        "shared_smem_ldm_cpasync_k128_warp32x32_bf16",
+        "bf16",
+        "sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+        "explicit-mma-shared-smem-ldm-cpasync-k128-warp32x32-bf16.jsonl",
+    ),
+    KernelExperiment(
         "shared_smem_ldm_vec_k128_warp16x32_f16",
         "f16",
         "sm120_mma_f16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
