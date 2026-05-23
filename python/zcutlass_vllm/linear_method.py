@@ -57,6 +57,27 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
             self.delegate.process_weights_after_loading(layer)
         clear_zcutlass_weight_cache(layer)
 
+    def _delegate_without_transpose_reason(self, layer, x) -> tuple[str, str] | None:
+        if self.adapter.force_zcutlass:
+            return None
+        x_shape = getattr(x, "shape", None)
+        weight = getattr(layer, "weight", None)
+        weight_shape = getattr(weight, "shape", None)
+        if x_shape is None or weight_shape is None or len(x_shape) != 2 or len(weight_shape) != 2:
+            return ("rank_not_2", "unknown")
+        m = int(x_shape[0])
+        k = int(x_shape[1])
+        n = int(weight_shape[0])
+        weight_k = int(weight_shape[1])
+        if k != weight_k:
+            return ("inner_dimension_mismatch", "unknown")
+        family = self.adapter.routing_policy.family(m, n, k)
+        if family == "fallback":
+            return ("shape_not_target_bucket", family)
+        if family not in self.adapter.promoted_families:
+            return ("family_not_promoted", family)
+        return None
+
     def _transposed_weight(self, layer):
         weight = layer.weight
         if not self.cache_transposed_weight:
@@ -81,6 +102,19 @@ class ZCutlassUnquantizedLinearMethod(LinearMethodBase):  # type: ignore[misc,va
         return weight_t
 
     def apply(self, layer, x, bias=None):
+        fast_delegate = self._delegate_without_transpose_reason(layer, x)
+        if fast_delegate is not None:
+            reason, family = fast_delegate
+            self.last_weight_cache = "skipped"
+            self.adapter._record_fallback_trace(
+                reason=reason,
+                family=family,
+                fallback_path_name="vllm_unquantized_fallback",
+            )
+            if self.adapter.last_trace is not None:
+                self.adapter.last_trace["weight_cache"] = self.last_weight_cache
+            return self.delegate.apply(layer, x, bias)
+
         weight_t = self._transposed_weight(layer)
         output = self.adapter.run(
             x,

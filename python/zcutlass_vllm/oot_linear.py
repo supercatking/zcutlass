@@ -79,6 +79,11 @@ class ZCutlassOotLinearMixin:
         logger.write(row)
 
     def forward(self, input_):
+        if (
+            getattr(self, "_zcutlass_route_logger", None) is None
+            or not getattr(self, "_zcutlass_target_layer", False)
+        ):
+            return super().forward(input_)
         start_ns = time.perf_counter_ns()
         output = super().forward(input_)
         latency_us = (time.perf_counter_ns() - start_ns) / 1000.0

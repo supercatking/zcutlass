@@ -8,9 +8,17 @@ keeping unpromoted shapes on the stock PyTorch path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from typing import Any, Callable, Dict, Optional
 
 from zcutlass_torch import RoutingPolicy, ZCutlassGemmOverlay, selected_gemm_config
+
+
+def _env_enabled(name: str, default: bool = True) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value not in ("", "0", "false", "False", "FALSE", "no", "No", "NO")
 
 
 @dataclass
@@ -46,6 +54,7 @@ class ZCutlassVllmLinearAdapter:
         self.promoted_families = promoted_families
         self.force_zcutlass = force_zcutlass
         self.materialize_inputs = materialize_inputs
+        self.routing_policy = RoutingPolicy(promoted_families=promoted_families)
         self.stats = VllmLinearStats()
         self.last_trace: Optional[dict[str, Any]] = None
 
@@ -104,7 +113,7 @@ class ZCutlassVllmLinearAdapter:
         n = int(w_shape[1])
         if k != weight_k:
             return ("inner_dimension_mismatch", "unknown")
-        family = RoutingPolicy(promoted_families=self.promoted_families).family(m, n, k)
+        family = self.routing_policy.family(m, n, k)
         if family == "fallback":
             return ("shape_not_target_bucket", family)
         if family not in self.promoted_families:
@@ -150,10 +159,6 @@ class ZCutlassVllmLinearAdapter:
         if self.materialize_inputs and hasattr(x, "is_contiguous") and not x.is_contiguous():
             x = x.contiguous()
 
-        overlay = ZCutlassGemmOverlay(
-            routing_policy=RoutingPolicy(promoted_families=self.promoted_families),
-            force_zcutlass=self.force_zcutlass,
-        )
         if fallback_fn is not None:
             fast_delegate = self._fast_delegate_reason(
                 x,
@@ -169,6 +174,11 @@ class ZCutlassVllmLinearAdapter:
                     fallback_path_name=fallback_path_name,
                 )
                 return fallback_fn()
+        overlay = ZCutlassGemmOverlay(
+            routing_policy=self.routing_policy,
+            force_zcutlass=self.force_zcutlass,
+        )
+        if fallback_fn is not None:
             if not weight_is_transposed:
                 overlay.stats.record_miss("weight_not_pretransposed")
                 overlay.last_family = "unknown"
@@ -190,7 +200,11 @@ class ZCutlassVllmLinearAdapter:
                     out = fallback_fn()
                 else:
                     overlay.stats.record_hit()
-                    config = selected_gemm_config(x, weight, None, bias, 1.0, 0.0)
+                    config = (
+                        selected_gemm_config(x, weight, None, bias, 1.0, 0.0)
+                        if _env_enabled("ZCUTLASS_VLLM_TRACE_CONFIG", True)
+                        else None
+                    )
                     overlay.last_config = config
                     if config is not None:
                         overlay.last_family = str(config.get("shape_family", overlay.last_family))
@@ -198,8 +212,11 @@ class ZCutlassVllmLinearAdapter:
                         overlay.last_kernel_name = str(config.get("kernel_name", "unknown"))
                         overlay.last_tile = dict(config.get("tile", {"m": 0, "n": 0, "k": 0}))
                     else:
+                        overlay.last_family = self.routing_policy.family(
+                            int(x.shape[0]), int(weight.shape[1]), int(x.shape[1])
+                        )
                         overlay.last_kernel_path = "zcutlass"
-                        overlay.last_kernel_name = "unknown"
+                        overlay.last_kernel_name = "zcutlass_untraced"
                         overlay.last_tile = {"m": 0, "n": 0, "k": 0}
                     overlay.last_fallback_reason = None
                     import torch

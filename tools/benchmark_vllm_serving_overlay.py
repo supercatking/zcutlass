@@ -36,6 +36,7 @@ OVERLAY_ENV_KEYS = [
     "ZCUTLASS_VLLM_LAYER_FILTER",
     "ZCUTLASS_VLLM_LOG_ROUTES",
     "ZCUTLASS_VLLM_ROUTE_LOG",
+    "ZCUTLASS_VLLM_TRACE_CONFIG",
     "ZCUTLASS_VLLM_MODEL_ID",
 ]
 
@@ -262,6 +263,9 @@ def overlay_env(args: argparse.Namespace, route_log: pathlib.Path | None) -> dic
     if route_log is not None:
         env["ZCUTLASS_VLLM_LOG_ROUTES"] = "1"
         env["ZCUTLASS_VLLM_ROUTE_LOG"] = str(route_log)
+        env["ZCUTLASS_VLLM_TRACE_CONFIG"] = "1"
+    else:
+        env["ZCUTLASS_VLLM_TRACE_CONFIG"] = "0"
     return env
 
 
