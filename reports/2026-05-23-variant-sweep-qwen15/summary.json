@@ -1,0 +1,962 @@
+[
+  {
+    "filter": "64x64x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0513,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0513 ms (31.3788 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 31.3788
+  },
+  {
+    "filter": "64x256x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0667,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.0667 ms (24.1631 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 24.1631
+  },
+  {
+    "filter": "ldm_vec_lb2",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0614,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue zcutlass=0.0614 ms (26.2144 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 26.2144
+  },
+  {
+    "filter": "64x64x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0406,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0406 ms (39.6937 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 39.6937
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0438,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0438 ms (36.7921 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 36.7921
+  },
+  {
+    "filter": "32x128x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0413,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0413 ms (39.0168 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 39.0168
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.054,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0540 ms (29.8527 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 29.8527
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp32x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0466,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.0466 ms (34.5447 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 34.5447
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.046,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0460 ms (35.0255 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 35.0255
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0492,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0492 ms (32.7467 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 32.7467
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0659,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue zcutlass=0.0659 ms (24.4328 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 24.4328
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1079,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue zcutlass=0.1079 ms (14.9308 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 14.9308
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0984,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue zcutlass=0.0984 ms (16.3733 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 16.3733
+  },
+  {
+    "filter": "64x128x64_prefill_smem_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1082,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue zcutlass=0.1082 ms (14.8910 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 14.891
+  },
+  {
+    "filter": "64x128x64_prefill_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1188,
+    "n": 2048,
+    "returncode": 0,
+    "shape": "qkv",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=2048 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue zcutlass=0.1188 ms (13.5592 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 13.5592
+  },
+  {
+    "filter": "64x64x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0546,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0546 ms (22.1270 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 22.127
+  },
+  {
+    "filter": "64x256x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0658,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.0658 ms (18.3514 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 18.3514
+  },
+  {
+    "filter": "ldm_vec_lb2",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0598,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue zcutlass=0.0598 ms (20.1865 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 20.1865
+  },
+  {
+    "filter": "64x64x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0392,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0392 ms (30.7902 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 30.7902
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.041,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0410 ms (29.4452 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 29.4452
+  },
+  {
+    "filter": "32x128x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0411,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0411 ms (29.4222 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 29.4222
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0543,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.0543 ms (22.2575 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 22.2575
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp32x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0462,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.0462 ms (26.1418 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 26.1418
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0466,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0466 ms (25.9263 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 25.9263
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0515,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.0515 ms (23.4756 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 23.4756
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0673,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue zcutlass=0.0673 ms (17.9499 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 17.9499
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1096,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue zcutlass=0.1096 ms (11.0183 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 11.0183
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.0985,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue zcutlass=0.0985 ms (12.2680 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 12.268
+  },
+  {
+    "filter": "64x128x64_prefill_smem_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1087,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue zcutlass=0.1087 ms (11.1124 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 11.1124
+  },
+  {
+    "filter": "64x128x64_prefill_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1163,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "oproj",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue zcutlass=0.1163 ms (10.3848 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 10.3848
+  },
+  {
+    "filter": "64x64x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.3283,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.3283 ms (42.9325 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 42.9325
+  },
+  {
+    "filter": "64x256x128",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.269,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.2690 ms (52.3851 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 52.3851
+  },
+  {
+    "filter": "ldm_vec_lb2",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2827,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue zcutlass=0.2827 ms (49.8587 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 49.8587
+  },
+  {
+    "filter": "64x64x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2492,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.2492 ms (56.5560 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 56.556
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2623,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.2623 ms (53.7272 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 53.7272
+  },
+  {
+    "filter": "32x128x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2599,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.2599 ms (54.2167 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 54.2167
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_cpasync",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.3484,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.3484 ms (40.4484 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 40.4484
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp32x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2787,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.2787 ms (50.5744 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 50.5744
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2941,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.2941 ms (47.9166 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 47.9166
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_vec_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.3112,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.3112 ms (45.2809 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 45.2809
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.4284,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue zcutlass=0.4284 ms (32.8977 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 32.8977
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x64",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.5322,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue zcutlass=0.5322 ms (26.4792 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 26.4792
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x32",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.65,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue zcutlass=0.6500 ms (21.6819 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 21.6819
+  },
+  {
+    "filter": "64x128x64_prefill_smem_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.7151,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue zcutlass=0.7151 ms (19.7065 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 19.7065
+  },
+  {
+    "filter": "64x128x64_prefill_reg",
+    "k": 1536,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.7725,
+    "n": 17920,
+    "returncode": 0,
+    "shape": "up",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=17920 k=1536 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue zcutlass=0.7725 ms (18.2421 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 18.2421
+  },
+  {
+    "filter": "64x64x128",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2541,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.2541 ms (27.7331 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 27.7331
+  },
+  {
+    "filter": "64x256x128",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.3298,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x256x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.3298 ms (21.3684 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 21.3684
+  },
+  {
+    "filter": "ldm_vec_lb2",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.3076,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_lb2_warp16x32_reg_epilogue zcutlass=0.3076 ms (22.9066 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 22.9066
+  },
+  {
+    "filter": "64x64x64",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.184,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.1840 ms (38.2892 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 38.2892
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_cpasync",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1979,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.1979 ms (35.6139 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 35.6139
+  },
+  {
+    "filter": "32x128x64",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.1959,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.1959 ms (35.9688 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 35.9688
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_cpasync",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2655,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue zcutlass=0.2655 ms (26.5366 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 26.5366
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp32x32",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2114,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp32x32_reg_epilogue zcutlass=0.2114 ms (33.3335 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 33.3335
+  },
+  {
+    "filter": "64x128x128_prefill_smem_ldm_vec_warp16x32",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2189,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x128_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.2189 ms (32.1931 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 32.1931
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_vec_warp16x32",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.2422,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_vec_warp16x32_reg_epilogue zcutlass=0.2422 ms (29.0925 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 29.0925
+  },
+  {
+    "filter": "64x128x64_prefill_smem_ldm_warp16x32",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.342,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_ldm_warp16x32_reg_epilogue zcutlass=0.3420 ms (20.6065 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 20.6065
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x64",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.5784,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x64_reg_epilogue zcutlass=0.5784 ms (12.1833 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 12.1833
+  },
+  {
+    "filter": "64x128x64_prefill_smem_warp16x32",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.5198,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue zcutlass=0.5198 ms (13.5558 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 13.5558
+  },
+  {
+    "filter": "64x128x64_prefill_smem_reg",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.5753,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_reg_epilogue zcutlass=0.5753 ms (12.2477 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 12.2477
+  },
+  {
+    "filter": "64x128x64_prefill_reg",
+    "k": 8960,
+    "kernel": "zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue",
+    "m": 256,
+    "median_ms": 0.6328,
+    "n": 1536,
+    "returncode": 0,
+    "shape": "down",
+    "status": "success",
+    "stdout_tail": [
+      "GPU: NVIDIA GeForce RTX 5080 sm_120",
+      "m=256 n=1536 k=8960 dtype=bf16 kernel=zcutlass_sm120_mma_bf16_64x128x64_prefill_reg_epilogue zcutlass=0.6328 ms (11.1359 TFLOP/s) cublas=0.0000 ms (0.0000 TFLOP/s) speedup=0.0000x"
+    ],
+    "tflops": 11.1359
+  }
+]

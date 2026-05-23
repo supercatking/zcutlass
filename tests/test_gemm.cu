@@ -677,6 +677,14 @@ void run_dispatch_tests() {
   expect_path("BF16 explicit-MMA N64 prefill dispatch", desc, "experimental_fast");
   set_experimental_kernel_filter(nullptr);
 
+  desc.bias = reinterpret_cast<const void*>(0x1);
+  set_experimental_kernel_filter("64x64x64");
+  expect_kernel_contains("BF16 explicit-MMA N64 prefill bias dispatch", desc, "64x64x64");
+  expect_path("BF16 explicit-MMA N64 prefill bias dispatch", desc, "experimental_fast");
+  expect_family("BF16 explicit-MMA N64 prefill bias dispatch", desc, "prefill");
+  set_experimental_kernel_filter(nullptr);
+  desc.bias = nullptr;
+
   desc.a_type = zcutlass::DType::F16;
   desc.b_type = zcutlass::DType::F16;
   desc.c_type = zcutlass::DType::F16;
@@ -757,6 +765,7 @@ int main() {
   set_experimental_kernel_filter(nullptr);
   set_experimental_kernel_filter("64x64x64");
   run_case<half>("f16 explicit-mma n64 prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
+  run_case<half>("f16 explicit-mma n64 prefill bias smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, true, false);
   set_experimental_kernel_filter(nullptr);
 
   run_case<__nv_bfloat16>("bf16 tiny padded bias", handle, 13, 19, 23, 1.0f, 0.25f, true, true);
@@ -773,6 +782,7 @@ int main() {
   set_experimental_kernel_filter(nullptr);
   set_experimental_kernel_filter("64x64x64");
   run_case<__nv_bfloat16>("bf16 explicit-mma n64 prefill smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, false, false);
+  run_case<__nv_bfloat16>("bf16 explicit-mma n64 prefill bias smoke", handle, 64, 1024, 1024, 1.0f, 0.0f, true, false);
   set_experimental_kernel_filter(nullptr);
 
   CHECK_CUBLAS(cublasDestroy(handle));

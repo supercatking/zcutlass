@@ -478,9 +478,8 @@ gemm_api::GemmArguments make_arguments(const GemmDesc& desc,
 }
 
 gemm_api::ShapeFamily classify_shape_family(const gemm_api::GemmArguments& args) {
-  if (args.beta != 0.0f || args.bias != nullptr || args.A.ld != args.problem.k ||
-      args.B.ld != args.problem.n || args.C.ld != args.problem.n ||
-      args.D.ld != args.problem.n) {
+  if (args.beta != 0.0f || args.A.ld != args.problem.k || args.B.ld != args.problem.n ||
+      args.C.ld != args.problem.n || args.D.ld != args.problem.n) {
     return gemm_api::ShapeFamily::Fallback;
   }
   if (args.problem.m <= 16 && args.problem.n >= 1024 && args.problem.k >= 1024) {

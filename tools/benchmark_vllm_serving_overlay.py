@@ -154,6 +154,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cuda-visible-devices", help="Optional CUDA_VISIBLE_DEVICES value.")
     parser.add_argument("--allow-families", default=DEFAULT_ALLOW_FAMILIES)
     parser.add_argument("--layer-filter", default=DEFAULT_LAYER_FILTER)
+    parser.add_argument(
+        "--log-routes",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Enable per-Linear route JSONL logging for overlay runs. Disable with "
+            "--no-log-routes to measure serving overhead without synchronous JSONL writes."
+        ),
+    )
     parser.add_argument("--output-dir", type=pathlib.Path, default=repo_root() / "reports" / "vllm-serving-overlay")
     parser.add_argument("--plan-output", type=pathlib.Path)
     parser.add_argument("--summary-output", type=pathlib.Path)
@@ -239,19 +248,21 @@ def common_env(args: argparse.Namespace) -> dict[str, str]:
     return env
 
 
-def overlay_env(args: argparse.Namespace, route_log: pathlib.Path) -> dict[str, str]:
+def overlay_env(args: argparse.Namespace, route_log: pathlib.Path | None) -> dict[str, str]:
     python_path = f"{repo_root() / 'python'}:${{PYTHONPATH:+:$PYTHONPATH}}"
-    return {
+    env = {
         **common_env(args),
         "PYTHONPATH": python_path,
         "VLLM_PLUGINS": "zcutlass_overlay",
         "ZCUTLASS_VLLM_ENABLE": "1",
         "ZCUTLASS_VLLM_ALLOW_FAMILIES": args.allow_families,
         "ZCUTLASS_VLLM_LAYER_FILTER": args.layer_filter,
-        "ZCUTLASS_VLLM_LOG_ROUTES": "1",
-        "ZCUTLASS_VLLM_ROUTE_LOG": str(route_log),
         "ZCUTLASS_VLLM_MODEL_ID": args.model,
     }
+    if route_log is not None:
+        env["ZCUTLASS_VLLM_LOG_ROUTES"] = "1"
+        env["ZCUTLASS_VLLM_ROUTE_LOG"] = str(route_log)
+    return env
 
 
 def provider_for(variant: str) -> str:
@@ -277,9 +288,17 @@ def build_plan(args: argparse.Namespace, preset: ServingPreset, variant: str) ->
     output_dir = args.output_dir.expanduser().resolve()
     result_dir = output_dir / variant
     result_file = result_dir / f"{variant}-{preset.name}.json"
-    route_log = output_dir / f"routes-{variant}-{preset.name}.jsonl" if variant == "overlay" else None
-    set_env = overlay_env(args, route_log) if route_log else common_env(args)
-    unset_env = [] if variant == "overlay" else OVERLAY_ENV_KEYS
+    route_log = (
+        output_dir / f"routes-{variant}-{preset.name}.jsonl"
+        if variant == "overlay" and args.log_routes
+        else None
+    )
+    set_env = overlay_env(args, route_log) if variant == "overlay" else common_env(args)
+    unset_env = (
+        ["ZCUTLASS_VLLM_LOG_ROUTES", "ZCUTLASS_VLLM_ROUTE_LOG"]
+        if variant == "overlay" and route_log is None
+        else ([] if variant == "overlay" else OVERLAY_ENV_KEYS)
+    )
     port = port_for(args, variant)
     name = served_model_name(args, variant)
     base_url = f"http://{args.host}:{port}"

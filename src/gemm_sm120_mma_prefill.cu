@@ -80,6 +80,19 @@ __device__ __nv_bfloat16 from_float<__nv_bfloat16>(float value) {
   return __float2bfloat16_rn(value);
 }
 
+template <typename T>
+__device__ float to_float(T value);
+
+template <>
+__device__ float to_float<half>(half value) {
+  return __half2float(value);
+}
+
+template <>
+__device__ float to_float<__nv_bfloat16>(__nv_bfloat16 value) {
+  return __bfloat162float(value);
+}
+
 __device__ unsigned short storage_bits(half value) {
   return __half_raw(value).x;
 }
@@ -737,11 +750,17 @@ __device__ void store_accumulator(T* __restrict__ D,
                                   int lane_group,
                                   int lane_in_group,
                                   const float acc[4]) {
+  const T* bias = static_cast<const T*>(desc.bias);
 #pragma unroll
   for (int element = 0; element < 4; ++element) {
     const int row = mma_c_row(lane_group, element);
     const int col = mma_c_col(lane_in_group, element);
-    D[(tile_m + row) * desc.ldd + tile_n + n_offset + col] = from_float<T>(acc[element]);
+    const int64_t global_col = tile_n + n_offset + col;
+    float value = acc[element];
+    if (bias != nullptr) {
+      value += to_float<T>(bias[global_col]);
+    }
+    D[(tile_m + row) * desc.ldd + global_col] = from_float<T>(value);
   }
 }
 
@@ -2214,7 +2233,7 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
                      gemm_api::ShapeFamily::Prefill,
                      true,
                      false,
-                     false,
+                     true,
                      true,
                      gemm_sm120::Sm120MmaPrefill64x128x64Config::kPipelineStages,
                      gemm_api::EpilogueKind::RegisterLinear} {}
@@ -2247,7 +2266,7 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
         args.problem.k < 1024) {
       return false;
     }
-    if (args.alpha != 1.0f || args.beta != 0.0f || args.bias != nullptr) {
+    if (args.alpha != 1.0f || args.beta != 0.0f) {
       return false;
     }
     if (args.A.ld != args.problem.k || args.B.ld != args.problem.n ||

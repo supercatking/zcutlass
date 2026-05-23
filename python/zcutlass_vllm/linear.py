@@ -49,6 +49,68 @@ class ZCutlassVllmLinearAdapter:
         self.stats = VllmLinearStats()
         self.last_trace: Optional[dict[str, Any]] = None
 
+    def _record_fallback_trace(
+        self,
+        *,
+        reason: str,
+        family: str = "unknown",
+        fallback_path_name: str,
+    ) -> None:
+        self.stats.calls += 1
+        self.stats.misses += 1
+        self.stats.fallback_reasons[reason] = self.stats.fallback_reasons.get(reason, 0) + 1
+        self.last_trace = {
+            "family": family,
+            "kernel_path": fallback_path_name,
+            "kernel_name": fallback_path_name,
+            "tile": {"m": 0, "n": 0, "k": 0},
+            "selected_config": None,
+            "fallback_reason": reason,
+            "hit_count": 0,
+            "miss_count": 1,
+            "fallback_reasons": {reason: 1},
+            "promoted_families": self.promoted_families,
+            "force_zcutlass": self.force_zcutlass,
+            "materialize_inputs": self.materialize_inputs,
+        }
+
+    def _fast_delegate_reason(
+        self,
+        x,
+        weight,
+        bias,
+        *,
+        weight_is_transposed: bool,
+    ) -> tuple[str, str] | None:
+        """Return an early vLLM-delegate fallback reason when zcutlass is off-route.
+
+        The vLLM integration calls this adapter for every wrapped Linear,
+        including decode and large-shape paths that are intentionally not
+        promoted yet. Avoiding extension/config queries on those misses keeps
+        the stock vLLM path closer to its native overhead.
+        """
+
+        if self.force_zcutlass:
+            return None
+        if not weight_is_transposed:
+            return ("weight_not_pretransposed", "unknown")
+        x_shape = getattr(x, "shape", None)
+        w_shape = getattr(weight, "shape", None)
+        if x_shape is None or w_shape is None or len(x_shape) != 2 or len(w_shape) != 2:
+            return ("rank_not_2", "unknown")
+        m = int(x_shape[0])
+        k = int(x_shape[1])
+        weight_k = int(w_shape[0])
+        n = int(w_shape[1])
+        if k != weight_k:
+            return ("inner_dimension_mismatch", "unknown")
+        family = RoutingPolicy(promoted_families=self.promoted_families).family(m, n, k)
+        if family == "fallback":
+            return ("shape_not_target_bucket", family)
+        if family not in self.promoted_families:
+            return ("family_not_promoted", family)
+        return None
+
     def __call__(self, x, weight, bias=None, *, weight_is_transposed: bool = False):
         """Run one Linear callsite.
 
@@ -93,6 +155,20 @@ class ZCutlassVllmLinearAdapter:
             force_zcutlass=self.force_zcutlass,
         )
         if fallback_fn is not None:
+            fast_delegate = self._fast_delegate_reason(
+                x,
+                weight,
+                bias,
+                weight_is_transposed=weight_is_transposed,
+            )
+            if fast_delegate is not None:
+                reason, family = fast_delegate
+                self._record_fallback_trace(
+                    reason=reason,
+                    family=family,
+                    fallback_path_name=fallback_path_name,
+                )
+                return fallback_fn()
             if not weight_is_transposed:
                 overlay.stats.record_miss("weight_not_pretransposed")
                 overlay.last_family = "unknown"
