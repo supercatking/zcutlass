@@ -122,16 +122,21 @@ Measured on `128x4096x4096`:
   and `0.105 ms` BF16.
 - `64x64x128`: regresses, so increasing CTA count by shrinking N is not the
   right prefill direction for this shape.
+- `64x256x128`: regresses, so increasing CTA N to improve A reuse costs more
+  in occupancy/shared-memory footprint than it saves.
 - `launch_bounds(..., 2)`: reduces registers but introduces stack spill and
   regresses.
+- `64x128x64 cp.async double-buffer`, `warp32x32`: new best point, about
+  `0.094 ms` FP16 and `0.095 ms` BF16 after removing local stack spill.
 
 Current conclusion: vectorized global-to-shared staging, larger K tiles, and
-higher per-warp MMA density are effective. The best explicit-MMA path is now
-roughly `1.6x` faster than the first ldmatrix prototype, but still only about
-`0.52x-0.56x` of cuBLAS for canonical prefill. This is not promotable to
-default dispatch. The next kernel direction should be a deeper mainloop change:
-`cp.async`/double buffering or a more CUTLASS-like pipelined shared-memory
-layout, not smaller CTA tiles or forced register throttling.
+higher per-warp MMA density are effective. The first `cp.async` double-buffer
+mainloop confirms that staging/barrier overlap matters. The best explicit-MMA
+path is now roughly `1.7x` faster than the first ldmatrix prototype, but still
+only about `0.58x-0.62x` of cuBLAS for canonical prefill. This is not promotable
+to default dispatch. The next kernel direction should keep the pipelined
+mainloop and improve math density or reduce remaining synchronization/ldmatrix
+pressure, rather than changing only CTA N size or forcing register throttling.
 
 ## Implementation Direction
 

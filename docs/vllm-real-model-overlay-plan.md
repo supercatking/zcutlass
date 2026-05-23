@@ -24,6 +24,10 @@ Implemented zcutlass files:
 - `tools/check_vllm_real_model_overlay.py`: imports vLLM, loads the plugin, and
   optionally loads a user-specified model through the vLLM `LLM` API, generates
   one deterministic prompt, and summarizes route-log hit/fallback rows.
+- `tools/benchmark_vllm_serving_overlay.py`: bounded stock-vs-overlay vLLM
+  serving benchmark harness. It defaults to dry-run command generation, emits
+  exact server/client commands, records env and route-log paths, and parses
+  vLLM bench TTFT/TPOT/tokens/s percentiles when result JSON is available.
 
 First layer classes to target:
 
@@ -127,6 +131,77 @@ vllm serve "$MODEL" \
 Run the same benchmark with `--model qwen15-overlay` and
 `--result-filename overlay-prefill.json`.
 
+## Bounded Serving Harness
+
+Use the harness before any heavyweight serving run. It does not download models
+by default and does not start vLLM unless `--run` is passed.
+
+Generate exact stock and overlay server/client commands for the prefill-heavy
+target:
+
+```bash
+cd /home/zyz/zcutlass
+python3 tools/benchmark_vllm_serving_overlay.py \
+  --preset prefill-heavy \
+  --variant both \
+  --output-dir /home/zyz/zcutlass/reports/vllm-serving-overlay \
+  --no-run
+```
+
+Other bounded workload presets:
+
+- `decode-heavy`: short random prompts and longer random outputs to emphasize
+  decode TPOT.
+- `prefill-heavy`: long random prompts and shorter random outputs to emphasize
+  TTFT/prefill.
+- `mixed`: balanced prompt and output lengths for end-to-end latency.
+
+The generated stock server command unsets overlay-related env vars. The overlay
+server command sets:
+
+```bash
+export PYTHONPATH=/home/zyz/zcutlass/python:${PYTHONPATH:+:$PYTHONPATH}
+export VLLM_PLUGINS=zcutlass_overlay
+export ZCUTLASS_VLLM_ENABLE=1
+export ZCUTLASS_VLLM_ALLOW_FAMILIES=prefill
+export ZCUTLASS_VLLM_LAYER_FILTER=qkv_proj,gate_up_proj,down_proj,o_proj
+export ZCUTLASS_VLLM_LOG_ROUTES=1
+export ZCUTLASS_VLLM_ROUTE_LOG=/home/zyz/zcutlass/reports/vllm-serving-overlay/routes-overlay-<preset>.jsonl
+```
+
+Dry-run artifacts:
+
+- `plan-<preset>.json`: exact command blocks, env vars, ports, route-log path,
+  result-file paths, and workload bounds.
+- `summary-<preset>.jsonl`: one record per provider with env, route log,
+  server/client commands, result path, and parsed metrics if a vLLM result file
+  already exists.
+
+When a cached/local model is available and the vLLM environment is already
+active, run a bounded sequential stock/overlay comparison:
+
+```bash
+cd /home/zyz/zcutlass
+source /home/zyz/vllm/.venv/bin/activate
+python3 tools/benchmark_vllm_serving_overlay.py \
+  --preset prefill-heavy \
+  --variant both \
+  --output-dir /home/zyz/zcutlass/reports/vllm-serving-overlay \
+  --run --require-vllm
+```
+
+The harness sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` unless
+`--allow-downloads` is explicitly passed. In `--run` mode it first checks that
+the vLLM CLI is available and that the model can be resolved locally; otherwise
+it exits as a clean skip unless `--require-vllm` or `--require-model` makes the
+missing dependency fatal. Pass `--vllm-command /home/zyz/vllm/.venv/bin/vllm`
+if the script is not launched from an activated vLLM environment.
+
+Metric extraction is best-effort across vLLM bench result formats. The summary
+record includes `tokens_per_second`, `request_throughput`, and TTFT/TPOT/ITL
+`mean`, `p50`, `p95`, and `p99` fields when those keys are present in the saved
+result JSON.
+
 Registration smoke check:
 
 ```bash
@@ -169,8 +244,12 @@ for the smoke step before full serving benchmarks.
 
 - Stock serving baseline completes.
 - Overlay server starts only when explicitly enabled.
+- Bounded serving harness dry-run emits stock and overlay server/client
+  commands for decode-heavy, prefill-heavy, and mixed presets.
 - Bounded smoke runner reports plugin/OOT registration and route-log
   hit/fallback counts before full serving runs.
+- Serving benchmark summaries record env vars, route-log path, result files,
+  and vLLM bench TTFT/TPOT/tokens/s percentiles when available.
 - Route log shows real model Linear callsites with hit/fallback rows.
 - Unsupported quantized/non-unquantized methods stay on stock vLLM.
 - No vLLM source checkout edits are required.
