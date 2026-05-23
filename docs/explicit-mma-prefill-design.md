@@ -138,6 +138,12 @@ Measured on `128x4096x4096`:
   versus `0.192 ms` for the current `64x128x64` cp.async path and about
   `0.075-0.078 ms` for cuBLAS. Shrinking M to increase CTA count is therefore
   not enough to close the down-projection gap.
+- `64x64x64 cp.async double-buffer`, `warp32x32`: improves the current
+  experimental cp.async route without changing M reuse. On Qwen2.5-1.5B BF16
+  hit shapes it measures about `0.038 ms` for `256x1536x1536`, `0.247 ms` for
+  `256x17920x1536`, and `0.184 ms` for `256x1536x8960`. This is a consistent
+  local improvement over `64x128x64`, but still only about `0.41x-0.69x` of
+  cuBLAS across those shapes.
 
 Current conclusion: vectorized global-to-shared staging, larger K tiles, and
 higher per-warp MMA density are effective. The first `cp.async` double-buffer
@@ -147,6 +153,8 @@ only about `0.58x-0.62x` of cuBLAS for canonical prefill. This is not promotable
 to default dispatch. The next kernel direction should keep the pipelined
 mainloop and improve math density or reduce remaining synchronization/ldmatrix
 pressure, rather than changing only CTA shape or forcing register throttling.
+`64x64x64` is now the preferred experimental `cpasync` route because it is the
+best measured point so far, but it remains experimental-only.
 
 Real vLLM Qwen2.5-1.5B smoke results changed the near-term target shapes:
 
@@ -169,6 +177,10 @@ Microbenchmarks for the Qwen2.5-1.5B prefill hit shapes show the current K64
 - The `32x128x64` cp.async probe remains in the manifest for exact-filter
   experiments, but it is not promoted because it is at best roughly tied with
   the `64x128x64` cp.async path on these Qwen hit shapes.
+- The `64x64x64` cp.async probe is promoted within the experimental `cpasync`
+  filter because it improves the current K64 path, but it is not promoted to
+  normal dispatch because it remains behind cuBLAS and does not yet create a
+  stable vLLM serving win.
 
 This means vLLM routing is now observable and functional, but the kernel is not
 ready for an end-to-end performance claim.

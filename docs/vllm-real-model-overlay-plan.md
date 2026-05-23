@@ -272,6 +272,19 @@ was still faster:
 This confirms the serving measurement path is usable, but also confirms that
 the current kernel/hit-rate combination is not a product-value win.
 
+After switching the experimental `cpasync` route to the faster `64x64x64`
+prefill kernel, the same bounded serving smoke still did not produce a stable
+serving win:
+
+- stock: TTFT mean `142.02 ms`, TPOT mean `10.98 ms`, tokens/s `382.39`.
+- overlay: TTFT mean `137.10 ms`, TPOT mean `14.21 ms`, tokens/s `377.86`.
+- route log: `112` zcutlass hits and `3808` fallbacks; `84` of the hits used
+  `zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue`.
+
+The TTFT mean/p95 variance is not enough to claim value because the sample is
+small and TPOT/tokens/s remain worse. The product proof still requires a faster
+kernel and higher promoted-route coverage.
+
 ## Acceptance
 
 - Stock serving baseline completes.

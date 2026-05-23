@@ -54,6 +54,9 @@ constexpr int kThreadsPerBlockN64 = kWarpsPerBlockN64 * kWarpSize;
 constexpr int kWarpTilesNBlock64 = kBlockN64Tile / kWarpTileN32;
 constexpr int kWarpsPerBlockBlockN64 = kWarpTilesM * kWarpTilesNBlock64;
 constexpr int kThreadsPerBlockBlockN64 = kWarpsPerBlockBlockN64 * kWarpSize;
+constexpr int kWarpTilesN64M32N32 = kBlockN64Tile / kWarpTileN32;
+constexpr int kWarpsPerBlockN64M32N32 = kWarpTilesM32 * kWarpTilesN64M32N32;
+constexpr int kThreadsPerBlockN64M32N32 = kWarpsPerBlockN64M32N32 * kWarpSize;
 
 static_assert(kThreadsPerBlock == 1024, "The prototype uses one warp per 16x16 output tile");
 static_assert(kThreadsPerBlockN32 == 512, "The warp16x32 prototype uses 16 warps per CTA");
@@ -62,6 +65,7 @@ static_assert(kThreadsPerBlockM32TileN32 == 128, "The 32x128 warp32x32 prototype
 static_assert(kThreadsPerBlockN256M32N32 == 512, "The 64x256 warp32x32 prototype uses 16 warps per CTA");
 static_assert(kThreadsPerBlockN64 == 256, "The warp16x64 prototype uses 8 warps per CTA");
 static_assert(kThreadsPerBlockBlockN64 == 256, "The 64x64 warp16x32 prototype uses 8 warps per CTA");
+static_assert(kThreadsPerBlockN64M32N32 == 128, "The 64x64 warp32x32 prototype uses 4 warps per CTA");
 
 template <typename T>
 __device__ T from_float(float value);
@@ -233,6 +237,24 @@ __device__ void cp_async_b_tile_padded_vec16(T* __restrict__ b_tile,
 }
 
 template <typename T>
+__device__ void cp_async_b_tile_n64_padded_vec16(T* __restrict__ b_tile,
+                                                 const T* __restrict__ B,
+                                                 const GemmDesc& desc,
+                                                 int64_t block_n,
+                                                 int64_t k0,
+                                                 int tid) {
+  constexpr int kElementsPerVec = 16 / static_cast<int>(sizeof(T));
+  static_assert(kBlockN64Tile % kElementsPerVec == 0, "B N64 tile must support 16B copies");
+  constexpr int kVecsPerRow = kBlockN64Tile / kElementsPerVec;
+  for (int vec = tid; vec < kBlockK * kVecsPerRow; vec += blockDim.x) {
+    const int row = vec / kVecsPerRow;
+    const int col = (vec % kVecsPerRow) * kElementsPerVec;
+    cp_async_ca_shared_global_16(b_tile + row * kBStrideN64K128 + col,
+                                 B + (k0 + row) * desc.ldb + block_n + col);
+  }
+}
+
+template <typename T>
 __device__ void cp_async_a_tile_compact_vec16_k128(T* __restrict__ a_tile,
                                                    const T* __restrict__ A,
                                                    const GemmDesc& desc,
@@ -340,6 +362,20 @@ __device__ void cp_async_tile_m32_padded_vec16(T* __restrict__ a_tile,
                                                int tid) {
   cp_async_a_tile_m32_padded_vec16(a_tile, A, desc, block_m, k0, tid);
   cp_async_b_tile_padded_vec16(b_tile, B, desc, block_n, k0, tid);
+}
+
+template <typename T>
+__device__ void cp_async_tile_n64_padded_vec16(T* __restrict__ a_tile,
+                                               T* __restrict__ b_tile,
+                                               const T* __restrict__ A,
+                                               const T* __restrict__ B,
+                                               const GemmDesc& desc,
+                                               int64_t block_m,
+                                               int64_t block_n,
+                                               int64_t k0,
+                                               int tid) {
+  cp_async_a_tile_padded_vec16(a_tile, A, desc, block_m, k0, tid);
+  cp_async_b_tile_n64_padded_vec16(b_tile, B, desc, block_n, k0, tid);
 }
 
 template <typename T>
@@ -1238,6 +1274,105 @@ void sm120_mma_prefill_smem_ldm_cpasync_warp32x32_32x128x64_kernel(GemmDesc desc
 }
 
 template <typename T>
+__global__ __launch_bounds__(kThreadsPerBlockN64M32N32, 1)
+void sm120_mma_prefill_smem_ldm_cpasync_warp32x32_64x64x64_kernel(GemmDesc desc,
+                                                                  const T* __restrict__ A,
+                                                                  const T* __restrict__ B,
+                                                                  T* __restrict__ D) {
+  constexpr int kStageElements = kBlockM * kAStride + kBlockK * kBStrideN64K128;
+  extern __shared__ __align__(16) unsigned char shared_storage[];
+  T* stage0 = reinterpret_cast<T*>(shared_storage);
+  T* stage1 = stage0 + kStageElements;
+  T* a_stage0 = stage0;
+  T* b_stage0 = stage0 + kBlockM * kAStride;
+  T* a_stage1 = stage1;
+  T* b_stage1 = stage1 + kBlockM * kAStride;
+
+  const int tid = threadIdx.x;
+  const int warp_id = tid / kWarpSize;
+  const int lane_id = tid % kWarpSize;
+  const int lane_group = lane_id >> 2;
+  const int lane_in_group = lane_id & 3;
+  const int warp_m32 = warp_id / kWarpTilesN64M32N32;
+  const int warp_n = warp_id % kWarpTilesN64M32N32;
+  const int warp_m0 = warp_m32 * 2;
+  const int warp_m1 = warp_m0 + 1;
+  const int warp_n_base = warp_n * kWarpTileN32;
+
+  const int64_t block_m = static_cast<int64_t>(blockIdx.y) * kBlockM;
+  const int64_t block_n = static_cast<int64_t>(blockIdx.x) * kBlockN64Tile;
+  const int64_t tile_m0 = block_m + warp_m32 * kWarpTileM32;
+  const int64_t tile_m1 = tile_m0 + kWarpTileM;
+  const int64_t tile_n = block_n + warp_n_base;
+
+  float acc00[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc01[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc02[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc03[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc10[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc11[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc12[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float acc13[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  cp_async_tile_n64_padded_vec16(
+      a_stage0, b_stage0, A, B, desc, block_m, block_n, 0, tid);
+  cp_async_commit_group();
+  cp_async_wait_all();
+  __syncthreads();
+
+  int current_stage = 0;
+  for (int64_t k0 = 0; k0 < desc.k; k0 += kBlockK) {
+    const int64_t next_k = k0 + kBlockK;
+    const int next_stage = current_stage ^ 1;
+    T* current_a = current_stage == 0 ? a_stage0 : a_stage1;
+    T* current_b = current_stage == 0 ? b_stage0 : b_stage1;
+    if (next_k < desc.k) {
+      T* next_a = next_stage == 0 ? a_stage0 : a_stage1;
+      T* next_b = next_stage == 0 ? b_stage0 : b_stage1;
+      cp_async_tile_n64_padded_vec16(
+          next_a, next_b, A, B, desc, block_m, block_n, next_k, tid);
+      cp_async_commit_group();
+    }
+
+#pragma unroll
+    for (int k_stage = 0; k_stage < kBlockK; k_stage += 16) {
+      unsigned a0[4];
+      unsigned a1[4];
+      unsigned b[2];
+      load_a_fragment_ldmatrix(current_a, warp_m0, k_stage, lane_id, a0);
+      load_a_fragment_ldmatrix(current_a, warp_m1, k_stage, lane_id, a1);
+      load_b_fragment_ldmatrix_n64_k128(current_b, warp_n_base, k_stage, 0, lane_id, b);
+      mma_m16n8k16<T>(acc00, a0, b);
+      mma_m16n8k16<T>(acc10, a1, b);
+      load_b_fragment_ldmatrix_n64_k128(current_b, warp_n_base, k_stage, 8, lane_id, b);
+      mma_m16n8k16<T>(acc01, a0, b);
+      mma_m16n8k16<T>(acc11, a1, b);
+      load_b_fragment_ldmatrix_n64_k128(current_b, warp_n_base, k_stage, 16, lane_id, b);
+      mma_m16n8k16<T>(acc02, a0, b);
+      mma_m16n8k16<T>(acc12, a1, b);
+      load_b_fragment_ldmatrix_n64_k128(current_b, warp_n_base, k_stage, 24, lane_id, b);
+      mma_m16n8k16<T>(acc03, a0, b);
+      mma_m16n8k16<T>(acc13, a1, b);
+    }
+    __syncthreads();
+    if (next_k < desc.k) {
+      cp_async_wait_all();
+      __syncthreads();
+    }
+    current_stage = next_stage;
+  }
+
+  store_accumulator(D, desc, tile_m0, tile_n, 0, lane_group, lane_in_group, acc00);
+  store_accumulator(D, desc, tile_m0, tile_n, 8, lane_group, lane_in_group, acc01);
+  store_accumulator(D, desc, tile_m0, tile_n, 16, lane_group, lane_in_group, acc02);
+  store_accumulator(D, desc, tile_m0, tile_n, 24, lane_group, lane_in_group, acc03);
+  store_accumulator(D, desc, tile_m1, tile_n, 0, lane_group, lane_in_group, acc10);
+  store_accumulator(D, desc, tile_m1, tile_n, 8, lane_group, lane_in_group, acc11);
+  store_accumulator(D, desc, tile_m1, tile_n, 16, lane_group, lane_in_group, acc12);
+  store_accumulator(D, desc, tile_m1, tile_n, 24, lane_group, lane_in_group, acc13);
+}
+
+template <typename T>
 __global__ __launch_bounds__(kThreadsPerBlockM32N32, 1)
 void sm120_mma_prefill_smem_ldm_cpasync_warp32x32_64x128x128_kernel(GemmDesc desc,
                                                                     const T* __restrict__ A,
@@ -1843,6 +1978,28 @@ Status launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_m32_k64(const GemmDes
 }
 
 template <typename T>
+Status launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_n64_k64(const GemmDesc& desc,
+                                                                   const void* A,
+                                                                   const void* B,
+                                                                   void* D) {
+  const dim3 block(kThreadsPerBlockN64M32N32);
+  const dim3 grid(static_cast<unsigned int>(desc.n / kBlockN64Tile),
+                  static_cast<unsigned int>(desc.m / kBlockM));
+  constexpr int kStageElements = kBlockM * kAStride + kBlockK * kBStrideN64K128;
+  const size_t shared_bytes = 2 * kStageElements * sizeof(T);
+  auto kernel = sm120_mma_prefill_smem_ldm_cpasync_warp32x32_64x64x64_kernel<T>;
+  const cudaError_t attr_status =
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_bytes));
+  if (attr_status != cudaSuccess && attr_status != cudaErrorInvalidValue) {
+    return Status::RuntimeError;
+  }
+  kernel<<<grid, block, shared_bytes, desc.stream>>>(
+      desc, static_cast<const T*>(A), static_cast<const T*>(B), static_cast<T*>(D));
+  return cudaGetLastError() == cudaSuccess ? Status::Success : Status::RuntimeError;
+}
+
+template <typename T>
 Status launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_k128(const GemmDesc& desc,
                                                                 const void* A,
                                                                 const void* B,
@@ -1992,6 +2149,7 @@ enum class Sm120MmaPrefillVariant {
   SharedLdmVecLb216x32,
   SharedLdmCpAsyncK6432x32,
   SharedLdmCpAsyncM32K6432x32,
+  SharedLdmCpAsyncN64K6432x32,
   SharedLdmCpAsyncK12832x32,
   SharedLdmVecK12816x32,
   SharedLdmVecK12832x32,
@@ -2024,7 +2182,8 @@ constexpr int variant_tile_m() {
 
 template <Sm120MmaPrefillVariant Variant>
 constexpr int variant_tile_n() {
-  if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32) {
+  if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecN64K12816x32 ||
+                Variant == Sm120MmaPrefillVariant::SharedLdmCpAsyncN64K6432x32) {
     return kBlockN64Tile;
   } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmVecN256K12832x32) {
     return kBlockN256Tile;
@@ -2129,6 +2288,9 @@ class Sm120MmaPrefillOperation final : public gemm_api::GemmOperation {
     } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmCpAsyncM32K6432x32) {
       return launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_m32_k64<T>(
           desc, args.A.data, args.B.data, args.D.data);
+    } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmCpAsyncN64K6432x32) {
+      return launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_n64_k64<T>(
+          desc, args.A.data, args.B.data, args.D.data);
     } else if constexpr (Variant == Sm120MmaPrefillVariant::SharedLdmCpAsyncK12832x32) {
       return launch_sm120_mma_prefill_smem_ldm_cpasync_warp32x32_k128<T>(
           desc, args.A.data, args.B.data, args.D.data);
@@ -2225,6 +2387,16 @@ void append_sm120_mma_prefill_operations(Manifest& manifest) {
           "zcutlass_sm120_mma_bf16_32x128x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue");
   static const Sm120MmaPrefillOperation<half,
                                         DType::F16,
+                                        Sm120MmaPrefillVariant::SharedLdmCpAsyncN64K6432x32>
+      f16_prefill_smem_ldm_cpasync_n64_k64_warp32x32(
+          "zcutlass_sm120_mma_f16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<__nv_bfloat16,
+                                        DType::BF16,
+                                        Sm120MmaPrefillVariant::SharedLdmCpAsyncN64K6432x32>
+      bf16_prefill_smem_ldm_cpasync_n64_k64_warp32x32(
+          "zcutlass_sm120_mma_bf16_64x64x64_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue");
+  static const Sm120MmaPrefillOperation<half,
+                                        DType::F16,
                                         Sm120MmaPrefillVariant::SharedLdmCpAsyncK12832x32>
       f16_prefill_smem_ldm_cpasync_k128_warp32x32(
           "zcutlass_sm120_mma_f16_64x128x128_prefill_smem_ldm_cpasync_warp32x32_reg_epilogue");
@@ -2306,6 +2478,8 @@ void append_sm120_mma_prefill_operations(Manifest& manifest) {
   manifest.append(&bf16_prefill_smem_ldm_vec_n256_k128_warp32x32);
   manifest.append(&f16_prefill_smem_ldm_vec_lb2_warp16x32);
   manifest.append(&bf16_prefill_smem_ldm_vec_lb2_warp16x32);
+  manifest.append(&f16_prefill_smem_ldm_cpasync_n64_k64_warp32x32);
+  manifest.append(&bf16_prefill_smem_ldm_cpasync_n64_k64_warp32x32);
   manifest.append(&f16_prefill_smem_ldm_cpasync_k64_warp32x32);
   manifest.append(&bf16_prefill_smem_ldm_cpasync_k64_warp32x32);
   manifest.append(&f16_prefill_smem_ldm_cpasync_m32_k64_warp32x32);
