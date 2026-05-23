@@ -82,7 +82,9 @@ Current prototype:
 - gated by `ZCUTLASS_EXPERIMENTAL_KERNELS`.
 - correct under tests and compute-sanitizer, but not a promotion candidate.
   Shared-memory staging improves the direct-global prototype, but scalar
-  fragment loads and the 1024-thread CTA remain too inefficient.
+  fragment loads and overly small warp output tiles remain too inefficient.
+  A `16x32` warp tile improves the result enough to beat current WMMA on one
+  FP16 canonical prefill shape, but it remains far below cuBLAS.
 
 Initial tile config:
 

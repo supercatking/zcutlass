@@ -90,12 +90,34 @@ vLLM LinearMethod smoke with the shared-memory FP16 route:
 | smoke_prefill | 0.0246 | 0.0945 | 0.260x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue` |
 | smoke_prefill_bf16_target | 0.0586 | 0.3131 | 0.187x | 1.00 | `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_reg_epilogue` |
 
+## Warp 16x32 Follow-Up
+
+A third experimental variant keeps the shared-memory staging and register
+epilogue, but increases each warp's output tile from `16x16` to `16x32`.
+This reduces CTA size from 1024 threads to 512 threads and doubles the MMA work
+per warp:
+
+- `zcutlass_sm120_mma_f16_64x128x64_prefill_smem_warp16x32_reg_epilogue`
+- `zcutlass_sm120_mma_bf16_64x128x64_prefill_smem_warp16x32_reg_epilogue`
+
+Measured `128x4096x4096` results:
+
+| dtype | zcutlass ms | zcutlass TFLOP/s | cuBLAS ms | cuBLAS TFLOP/s |
+| --- | ---: | ---: | ---: | ---: |
+| f16 | 0.2455 | 17.4945 | 0.0575 | 74.6899 |
+| bf16 | 0.2459 | 17.4649 | 0.0559 | 76.8275 |
+
+This is the first explicit-MMA variant to edge past the current default WMMA
+kernel on the FP16 canonical prefill shape, but it is still far from the
+`>=0.80x` cuBLAS/CUTLASS M2 promotion threshold. It should remain experimental.
+
 ## Next Step
 
 Upgrade the experimental operation in `gemm_sm120_mma_prefill.cu`:
 
 - scope: aligned prefill, FP16/BF16, `alpha=1`, `beta=0`, `bias=null`
-- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles
+- mainloop: `ldmatrix`-compatible shared-memory staged A/B tiles and larger
+  per-warp output tiles
 - epilogue: keep register linear conversion to FP16/BF16
 - promotion gate: correctness, JSONL benchmark, Nsight summary, and explicit
   confirmation that non-target shapes remain on WMMA fallback.
